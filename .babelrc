@@ -4,6 +4,6 @@
     "@babel/plugin-proposal-optional-chaining"
   ],
   ignore: [
-    "./js/levels",
+    "./js/levels"
   ],
 }

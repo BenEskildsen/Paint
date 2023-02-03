@@ -1,9 +1,16 @@
 
-  - resizing doesn't correctly re-render
-  - get canvas display size to always maintain aspect ratio
-  - get mouse strokes to be registered correctly
+  - select
+    - dragArea w/dragable canvas of selection(s)
+    - drag handles to resize dragables
+    - switching tools commits selections back to regular canvas
   - implement the rest of the tools
-  - implement undo/redo
-  - more colors w/two rows
-  - implement secondary color on right click
+    - bucket fill
+    - square, line
+  - implement per-tool settings
+    - line/eraser thickness
+    - square filled vs not (+ secondary color fill + border)
+    - cut/copy
+  - more colors
+    - implement secondary color on right click
+  - import/export images
 

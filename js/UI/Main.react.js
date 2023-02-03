@@ -11,6 +11,9 @@ const {rootReducer} = require('../reducers/rootReducer');
 const {initState} = require('../state');
 const {config} = require('../config');
 const {render} = require('../render');
+const ColorBar = require('./ColorBar.react');
+const ToolBar = require('./ToolBar.react');
+const PaintArea = require('./PaintArea.react');
 const {useEffect, useState, useMemo} = React;
 
 
@@ -25,23 +28,17 @@ function Main(props) {
   useEffect(() => {
     const canvas = document.getElementById('canvas');
     const ctx =  canvas.getContext('2d');
-    dispatch({
-      ctx,
-      imageData: ctx.createImageData(state.canvasDims.width, state.canvasDims.height),
-    });
-  }, [state.canvasDims]);
+    dispatch({ctx});
+  }, []);
   useResponsiveDimensions((width, height) => {
     dispatch({windowDims: {width, height}});
-    if (state?.ctx) {
-      render(state);
-    }
   });
 
   // rendering
   useEffect(() => {
     if (!state?.ctx) return;
-    render(state);
-  }, [state.ctx, state.actions]);
+    render(getState());
+  }, [state.ctx, state.windowDims, state.canvasDims]);
 
   return (
     <div
@@ -69,142 +66,7 @@ function Main(props) {
   );
 }
 
-const ToolBar = (props) => {
-  const {state, dispatch, getState} = props;
 
-  const toolButtons = [];
-  for (const tool of config.tools) {
-    toolButtons.push(<Button
-      key={"toolButton_" + tool}
-      disabled={state.tool == tool}
-      label={tool}
-      onClick={() => dispatch({tool})}
-    />);
-  }
-
-  return (
-    <div
-      style={{
-        width: config.toolBarWidth,
-        height: '100%',
-        borderRight: '1px solid black',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {toolButtons}
-
-    </div>
-  );
-};
-
-const div = (pos, size) => {
-  return {x: pos.x / size.width, y: pos.y / size.height};
-}
-
-const PaintArea = (props) => {
-  const {state, dispatch, getState} = props;
-  const {canvasDims, windowDims} = state;
-
-  useMouseHandler(
-    "canvas", {dispatch, getState},
-    {
-      leftDown: (state, dispatch, pos) => {
-        console.log("click", pos);
-      },
-      mouseMove: (state, dispatch, gridPos) => {
-        if (!state?.mouse?.isLeftDown) return;
-        dispatch({inMove: true});
-
-        const {canvasDims} = state;
-        if (state.prevInteractPos) {
-          const prevPos = state.prevInteractPos;
-          dispatch({type: 'STROKE',
-            start: div(prevPos, canvasDims),
-            end: div(gridPos, canvasDims),
-            color: state.color,
-            thickness: state.thickness,
-          });
-          dispatch({prevInteractPos: gridPos});
-        } else {
-          dispatch({prevInteractPos: gridPos});
-        }
-      },
-      leftUp: (state, dispatch, gridPos) => {
-        dispatch({inMove: false});
-        dispatch({prevInteractPos: null});
-      },
-    },
-  );
-
-  return (
-    <div
-      style={{
-        width: windowDims.width - config.toolBarWidth,
-        height: '100%',
-        backgroundColor: 'lightgray',
-      }}
-    >
-      <Canvas
-        width={windowDims.width - config.toolBarWidth}
-        height={windowDims.height - config.colorBarHeight}
-      />
-
-    </div>
-  );
-};
-
-const ColorBar = (props) => {
-  const {state, dispatch, getState} = props;
-
-  const colorButtons = [];
-  for (const color of config.colors) {
-    colorButtons.push(<Button
-      key={"colorButton_" + color}
-      id={"colorButton_" + color}
-      disabled={state.color == color}
-      style={{
-        backgroundColor: color,
-        width: 20,
-        height: 20,
-      }}
-      label={""}
-      onClick={() => dispatch({color})}
-    />);
-  }
-
-  return (
-    <div
-      style={{
-        width: '100%',
-        height: config.colorBarHeight,
-        borderTop: '1px solid black',
-        paddingTop: 10,
-        paddingLeft: 10,
-      }}
-    >
-
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: state.color,
-            width: 25,
-            height: 25,
-            marginRight: 10,
-          }}
-        >
-        </div>
-        {colorButtons}
-      </div>
-
-    </div>
-  );
-};
 
 
 

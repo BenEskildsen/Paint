@@ -1,18 +1,21 @@
 const config = {
   tools: [
-    'PEN', 'ERASER', 'BUCKET', 'SELECT', 'PIPETTE',
+    'ERASER', 'PEN', 'BUCKET', 'SELECT', 'PIPETTE',
   ],
   edits: [
     'UNDO', 'REDO', 'ERASE ALL',
   ],
   colors: [
-    'red', 'green', 'blue', 'black', 'white', 'gray', 'steelblue',
+    'black', 'darkgray',   'red',     'green',   'blue',    'orange',   'purple',
+  ],
+  colors2: [
+    'white', 'lightgray', '#CD5C5C', '#90EE90', 'steelblue', '#FA8072', 'pink',
   ],
 
   // dimensions
-  initialWidth: 500,
+  initialWidth: 700,
   initialHeight: 500,
-  toolBarWidth: 75,
+  toolBarWidth: 100,
   colorBarHeight: 75,
 };
 

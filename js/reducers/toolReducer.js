@@ -1,5 +1,5 @@
 
-const {render} = require('../render');
+const {render, renderAction} = require('../render');
 
 const toolReducer = (state, action) => {
   switch (action.type) {
@@ -7,7 +7,8 @@ const toolReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'SELECT':
-      render(state);
+    case 'PASTE':
+      renderAction(state, action);
       return {...state};
   }
   return state;

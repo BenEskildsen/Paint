@@ -4,6 +4,106 @@ const {
   Button,
   Modal,
   Canvas,
+  RadioPicker,
+  TextField
+} = require('bens_ui_components');
+const {
+  config
+} = require('../config');
+const {
+  useEffect,
+  useState,
+  useMemo
+} = React;
+const ColorBar = props => {
+  const {
+    state,
+    dispatch,
+    getState
+  } = props;
+  const colorButtons = [];
+  for (const color of config.colors) {
+    colorButtons.push( /*#__PURE__*/React.createElement(Button, {
+      key: "colorButton_" + color,
+      id: "colorButton_" + color,
+      disabled: state.color == color,
+      style: {
+        backgroundColor: color,
+        width: 20,
+        height: 20
+      },
+      label: "",
+      onClick: () => dispatch({
+        color
+      })
+    }));
+  }
+  const color2Buttons = [];
+  for (const color of config.colors2) {
+    color2Buttons.push( /*#__PURE__*/React.createElement(Button, {
+      key: "colorButton_" + color,
+      id: "colorButton_" + color,
+      disabled: state.color == color,
+      style: {
+        backgroundColor: color,
+        width: 20,
+        height: 20
+      },
+      label: "",
+      onClick: () => dispatch({
+        color
+      })
+    }));
+  }
+  const [textColor, setTextColor] = useState(state.color);
+  useEffect(() => {
+    setTextColor(state.color);
+  }, [state.color]);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: '100%',
+      height: config.colorBarHeight,
+      borderTop: '1px solid black',
+      paddingTop: 10,
+      paddingLeft: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'row'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      backgroundColor: state.color,
+      width: 25,
+      height: 25,
+      marginRight: 10
+    }
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, colorButtons), /*#__PURE__*/React.createElement("div", null, color2Buttons)), /*#__PURE__*/React.createElement(TextField, {
+    style: {
+      marginLeft: 5,
+      fontSize: 16
+    },
+    value: textColor,
+    onChange: value => {
+      setTextColor(value);
+    }
+  }), /*#__PURE__*/React.createElement(Button, {
+    label: "Set Color",
+    onClick: () => {
+      dispatch({
+        color: textColor
+      });
+    }
+  })));
+};
+module.exports = ColorBar;
+},{"../config":6,"bens_ui_components":35,"react":50}],2:[function(require,module,exports){
+const React = require('react');
+const {
+  Button,
+  Modal,
+  Canvas,
   RadioPicker
 } = require('bens_ui_components');
 const {
@@ -24,6 +124,9 @@ const {
 const {
   render
 } = require('../render');
+const ColorBar = require('./ColorBar.react');
+const ToolBar = require('./ToolBar.react');
+const PaintArea = require('./PaintArea.react');
 const {
   useEffect,
   useState,
@@ -39,10 +142,9 @@ function Main(props) {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     dispatch({
-      ctx,
-      imageData: ctx.createImageData(state.canvasDims.width, state.canvasDims.height)
+      ctx
     });
-  }, [state.canvasDims]);
+  }, []);
   useResponsiveDimensions((width, height) => {
     dispatch({
       windowDims: {
@@ -50,16 +152,13 @@ function Main(props) {
         height
       }
     });
-    if (state !== null && state !== void 0 && state.ctx) {
-      render(state);
-    }
   });
 
   // rendering
   useEffect(() => {
     if (!(state !== null && state !== void 0 && state.ctx)) return;
-    render(state);
-  }, [state.ctx, state.actions]);
+    render(getState());
+  }, [state.ctx, state.windowDims, state.canvasDims]);
   return /*#__PURE__*/React.createElement("div", {
     style: {
       backgroundColor: 'gray',
@@ -87,6 +186,291 @@ function Main(props) {
     getState: getState
   }), state.modal);
 }
+module.exports = Main;
+},{"../config":6,"../reducers/rootReducer":9,"../render":11,"../state":12,"./ColorBar.react":1,"./PaintArea.react":3,"./ToolBar.react":5,"bens_ui_components":35,"react":50}],3:[function(require,module,exports){
+const React = require('react');
+const {
+  Button,
+  Modal,
+  Canvas,
+  RadioPicker,
+  CheckerBackground
+} = require('bens_ui_components');
+const {
+  useEnhancedReducer,
+  useResponsiveDimensions,
+  useMouseHandler,
+  mouseReducer
+} = require('bens_ui_components');
+const {
+  config
+} = require('../config');
+const {
+  useEffect,
+  useState,
+  useMemo
+} = React;
+const div = (pos, size) => {
+  return {
+    x: pos.x / size.width,
+    y: pos.y / size.height
+  };
+};
+const toolToVerb = {
+  'PEN': 'STROKE',
+  'ERASER': 'ERASE'
+};
+const PaintArea = props => {
+  const {
+    state,
+    dispatch,
+    getState
+  } = props;
+  const {
+    canvasDims,
+    windowDims
+  } = state;
+  const paintAreaDims = {
+    width: windowDims.width - config.toolBarWidth,
+    height: windowDims.height - config.colorBarHeight
+  };
+  let width = canvasDims.width;
+  let height = canvasDims.height;
+  if (paintAreaDims.height < height) {
+    width = width * (paintAreaDims.height / height);
+    height = paintAreaDims.height;
+  }
+  if (paintAreaDims.width < width) {
+    height = height * (paintAreaDims.width / width);
+    width = paintAreaDims.width;
+  }
+  useMouseHandler("canvas", {
+    dispatch,
+    getState
+  }, {
+    leftDown: (state, dispatch, pos) => {
+      if (state.tool == 'PIPETTE') {
+        const px = state.ctx.getImageData(pos.x, pos.y, 1, 1).data;
+        dispatch({
+          color: 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')'
+        });
+      } else {
+        dispatch({
+          type: 'START_ACTION'
+        });
+      }
+    },
+    mouseMove: (state, dispatch, pos) => {
+      if ((state === null || state === void 0 ? void 0 : state.tool) == 'PEN' || (state === null || state === void 0 ? void 0 : state.tool) == 'ERASER') {
+        var _state$mouse;
+        if (!(state !== null && state !== void 0 && (_state$mouse = state.mouse) !== null && _state$mouse !== void 0 && _state$mouse.isLeftDown)) return;
+        dispatch({
+          inMove: true
+        });
+        const {
+          canvasDims
+        } = state;
+        if (state.prevInteractPos) {
+          const prevPos = state.prevInteractPos;
+          dispatch({
+            type: toolToVerb[state.tool],
+            start: div(prevPos, {
+              width: paintAreaDims.width,
+              height: paintAreaDims.height
+            }),
+            end: div(pos, {
+              width: paintAreaDims.width,
+              height: paintAreaDims.height
+            }),
+            color: state.color,
+            thickness: state.thickness
+          });
+          dispatch({
+            prevInteractPos: pos
+          });
+        } else {
+          dispatch({
+            prevInteractPos: pos
+          });
+        }
+      } else if (state.tool == 'PIPETTE') {
+        const px = state.ctx.getImageData(pos.x, pos.y, 1, 1).data;
+        dispatch({
+          colorPreview: 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')'
+        });
+      }
+    },
+    leftUp: (state, dispatch, gridPos) => {
+      dispatch({
+        type: 'END_ACTION'
+      });
+      dispatch({
+        inMove: false
+      });
+      dispatch({
+        prevInteractPos: null
+      });
+    }
+  });
+
+  // paste:
+  useEffect(() => {
+    document.addEventListener('paste', ev => {
+      if (!ev.clipboardData) return;
+      const items = ev.clipboardData.items;
+      if (!items) return;
+      let source = null;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          const blob = items[i].getAsFile();
+          const URLObj = window.URL || window.webkitURL;
+          source = URLObj.createObjectURL(blob);
+        }
+      }
+      if (source) {
+        dispatch({
+          type: 'START_ACTION'
+        });
+        dispatch({
+          type: 'PASTE',
+          source
+        });
+        dispatch({
+          type: 'END_ACTION'
+        });
+      }
+      ev.preventDefault();
+    }, false);
+  }, []);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: paintAreaDims.width,
+      height: '100%',
+      backgroundColor: 'lightgray'
+    }
+  }, /*#__PURE__*/React.createElement(CheckerBackground, {
+    style: {
+      position: 'absolute',
+      top: 0,
+      left: config.toolBarWidth,
+      zIndex: 1,
+      opacity: 0.5
+    },
+    pixelSize: {
+      width,
+      height
+    },
+    gridSize: {
+      width: width / 10,
+      height: height / 10
+    },
+    color1: "white",
+    color2: "grey"
+  }), /*#__PURE__*/React.createElement(Canvas, {
+    style: {
+      zIndex: 2,
+      position: 'fixed'
+    },
+    width: width,
+    height: height
+  }));
+};
+module.exports = PaintArea;
+},{"../config":6,"bens_ui_components":35,"react":50}],4:[function(require,module,exports){
+const React = require('react');
+const {
+  Modal,
+  Slider,
+  NumberField,
+  Button
+} = require('bens_ui_components');
+const {
+  render
+} = require('../render');
+const {
+  useEffect,
+  useState,
+  useMemo
+} = React;
+const SettingsModal = props => {
+  const {
+    state,
+    dispatch,
+    getState
+  } = props;
+  const [width, setWidth] = useState(state.canvasDims.width);
+  const [height, setHeight] = useState(state.canvasDims.height);
+  return /*#__PURE__*/React.createElement(Modal, {
+    style: {},
+    title: "Settings",
+    body: /*#__PURE__*/React.createElement("div", {
+      style: {}
+    }, /*#__PURE__*/React.createElement("div", null, "Width:", /*#__PURE__*/React.createElement(NumberField, {
+      value: width,
+      onChange: setWidth,
+      onlyInt: true
+    }), "Height:", /*#__PURE__*/React.createElement(NumberField, {
+      value: height,
+      onChange: setHeight,
+      onlyInt: true
+    })), /*#__PURE__*/React.createElement(Button, {
+      label: "Clear Canvas",
+      onClick: () => {
+        dispatch({
+          actions: [],
+          curAction: [],
+          redoActions: []
+        });
+        dispatch({
+          type: 'SET_CANVAS_DIMS',
+          width,
+          height
+        });
+        dispatch({
+          type: 'DISMISS_MODAL'
+        });
+      }
+    })),
+    buttons: [{
+      label: 'Save Settings',
+      onClick: () => {
+        dispatch({
+          type: 'SET_CANVAS_DIMS',
+          width,
+          height
+        });
+        dispatch({
+          type: 'DISMISS_MODAL'
+        });
+      }
+    }, {
+      label: 'Cancel',
+      onClick: () => {
+        dispatch({
+          type: 'DISMISS_MODAL'
+        });
+      }
+    }]
+  });
+};
+module.exports = SettingsModal;
+},{"../render":11,"bens_ui_components":35,"react":50}],5:[function(require,module,exports){
+const React = require('react');
+const {
+  Button,
+  Modal,
+  Canvas,
+  RadioPicker
+} = require('bens_ui_components');
+const SettingsModal = require('./SettingsModal.react');
+const {
+  config
+} = require('../config');
+const {
+  useEffect,
+  useState,
+  useMemo
+} = React;
 const ToolBar = props => {
   const {
     state,
@@ -110,141 +494,81 @@ const ToolBar = props => {
       height: '100%',
       borderRight: '1px solid black',
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      textAlign: 'center'
     }
-  }, toolButtons);
-};
-const div = (pos, size) => {
-  return {
-    x: pos.x / size.width,
-    y: pos.y / size.height
-  };
-};
-const PaintArea = props => {
-  const {
-    state,
-    dispatch,
-    getState
-  } = props;
-  const {
-    canvasDims,
-    windowDims
-  } = state;
-  useMouseHandler("canvas", {
-    dispatch,
-    getState
-  }, {
-    leftDown: (state, dispatch, pos) => {
-      console.log("click", pos);
-    },
-    mouseMove: (state, dispatch, gridPos) => {
-      var _state$mouse;
-      if (!(state !== null && state !== void 0 && (_state$mouse = state.mouse) !== null && _state$mouse !== void 0 && _state$mouse.isLeftDown)) return;
+  }, /*#__PURE__*/React.createElement(Button, {
+    label: "Settings",
+    onClick: () => {
       dispatch({
-        inMove: true
-      });
-      const {
-        canvasDims
-      } = state;
-      if (state.prevInteractPos) {
-        const prevPos = state.prevInteractPos;
-        dispatch({
-          type: 'STROKE',
-          start: div(prevPos, canvasDims),
-          end: div(gridPos, canvasDims),
-          color: state.color,
-          thickness: state.thickness
-        });
-        dispatch({
-          prevInteractPos: gridPos
-        });
-      } else {
-        dispatch({
-          prevInteractPos: gridPos
-        });
-      }
-    },
-    leftUp: (state, dispatch, gridPos) => {
-      dispatch({
-        inMove: false
-      });
-      dispatch({
-        prevInteractPos: null
+        type: 'SET_MODAL',
+        modal: /*#__PURE__*/React.createElement(SettingsModal, props)
       });
     }
-  });
-  return /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement(Button, {
+    label: "Undo",
+    onClick: () => {
+      dispatch({
+        type: 'UNDO'
+      });
+    }
+  }), /*#__PURE__*/React.createElement(Button, {
+    label: "Redo",
+    onClick: () => {
+      dispatch({
+        type: 'REDO'
+      });
+    }
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
-      width: windowDims.width - config.toolBarWidth,
-      height: '100%',
-      backgroundColor: 'lightgray'
+      marginTop: 5,
+      marginBottom: 5
     }
-  }, /*#__PURE__*/React.createElement(Canvas, {
-    width: windowDims.width - config.toolBarWidth,
-    height: windowDims.height - config.colorBarHeight
-  }));
+  }, "Tools"), toolButtons, /*#__PURE__*/React.createElement(ToolParameters, props));
 };
-const ColorBar = props => {
+const ToolParameters = props => {
   const {
     state,
-    dispatch,
-    getState
+    dispatch
   } = props;
-  const colorButtons = [];
-  for (const color of config.colors) {
-    colorButtons.push( /*#__PURE__*/React.createElement(Button, {
-      key: "colorButton_" + color,
-      id: "colorButton_" + color,
-      disabled: state.color == color,
+  let content = null;
+  if (state.tool == 'PIPETTE') {
+    content = /*#__PURE__*/React.createElement("div", {
       style: {
-        backgroundColor: color,
-        width: 20,
-        height: 20
-      },
-      label: "",
-      onClick: () => dispatch({
-        color
-      })
-    }));
+        backgroundColor: state.colorPreview,
+        width: 25,
+        height: 25,
+        margin: 'auto',
+        marginTop: 5
+      }
+    });
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
-      width: '100%',
-      height: config.colorBarHeight,
-      borderTop: '1px solid black',
-      paddingTop: 10,
-      paddingLeft: 10
+      margin: '5px',
+      backgroundColor: 'ghostwhite',
+      height: 200,
+      border: '4px inset grey'
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      flexDirection: 'row'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      backgroundColor: state.color,
-      width: 25,
-      height: 25,
-      marginRight: 10
-    }
-  }), colorButtons));
+  }, content);
 };
-module.exports = Main;
-},{"../config":2,"../reducers/rootReducer":5,"../render":7,"../state":8,"bens_ui_components":31,"react":46}],2:[function(require,module,exports){
+module.exports = ToolBar;
+},{"../config":6,"./SettingsModal.react":4,"bens_ui_components":35,"react":50}],6:[function(require,module,exports){
 const config = {
-  tools: ['PEN', 'ERASER', 'BUCKET', 'SELECT', 'PIPETTE'],
+  tools: ['ERASER', 'PEN', 'BUCKET', 'SELECT', 'PIPETTE'],
   edits: ['UNDO', 'REDO', 'ERASE ALL'],
-  colors: ['red', 'green', 'blue', 'black', 'white', 'gray', 'steelblue'],
+  colors: ['black', 'darkgray', 'red', 'green', 'blue', 'orange', 'purple'],
+  colors2: ['white', 'lightgray', '#CD5C5C', '#90EE90', 'steelblue', '#FA8072', 'pink'],
   // dimensions
-  initialWidth: 500,
+  initialWidth: 700,
   initialHeight: 500,
-  toolBarWidth: 75,
+  toolBarWidth: 100,
   colorBarHeight: 75
 };
 module.exports = {
   config
 };
-},{}],3:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 "use strict";
 
 var _Main = _interopRequireDefault(require("./UI/Main.react"));
@@ -257,7 +581,7 @@ function renderUI(root) {
 const root = _client.default.createRoot(document.getElementById('container'));
 renderUI(root);
 
-},{"./UI/Main.react":1,"react":46,"react-dom/client":42}],4:[function(require,module,exports){
+},{"./UI/Main.react":2,"react":50,"react-dom/client":46}],8:[function(require,module,exports){
 const modalReducer = (state, action) => {
   switch (action.type) {
     case 'DISMISS_MODAL':
@@ -281,7 +605,7 @@ const modalReducer = (state, action) => {
 module.exports = {
   modalReducer
 };
-},{}],5:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 const {
   toolReducer
 } = require('./toolReducer');
@@ -298,39 +622,72 @@ const {
   deepCopy
 } = require('bens_utils').helpers;
 const {
+  render
+} = require('../render');
+const {
   initState
 } = require('../state');
 const rootReducer = (state, action) => {
   if (state === undefined) return initState();
   switch (action.type) {
+    case 'END_ACTION':
+      state.redoActions = [];
+    // fall-through
+    case 'START_ACTION':
+      if (state.curAction.length > 0) {
+        state.actions.push(state.curAction);
+      }
+      state.curAction = [];
+      return {
+        ...state
+      };
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
     case 'SELECT':
-      state.actions = [...state.actions, action];
-      state.redoActions = [];
+    case 'PASTE':
+      state.curAction.push(action);
       return toolReducer(state, action);
     case 'UNDO':
-      if (state.actions.length == 0) return state;
-      const undoneAction = state.actions.pop();
-      state.redoActions = [undoneAction, ...state.redoActions];
-      return {
-        ...state,
-        actions: [...state.actions]
-      };
-    case 'REDO':
-      if (state.redoActions.length == 0) return state;
-      const redoAction = state.redoActions.shift();
-      state.actions = [...actions, redoAction];
-      let nextState = {
-        ...state
-      };
-      // clear bitmap
-      state.imageData = state.ctx.createImageData(state.width, state.height);
-      for (const a of state.actions) {
-        nextState = toolReducer(nextState, a);
+      {
+        if (state.actions.length == 0) return state;
+        const undoneAction = state.actions.pop();
+        const nextState = {
+          ...state,
+          redoActions: [undoneAction, ...state.redoActions],
+          actions: [...state.actions]
+        };
+        render(nextState);
+        return nextState;
       }
-      return nextState;
+    case 'REDO':
+      {
+        if (state.redoActions.length == 0) return state;
+        const redoAction = state.redoActions.shift();
+        state.actions = [...state.actions, redoAction];
+        let nextState = {
+          ...state
+        };
+        for (const a of state.actions) {
+          nextState = toolReducer(nextState, a);
+        }
+        render(nextState);
+        return nextState;
+      }
+    case 'SET_CANVAS_DIMS':
+      {
+        const {
+          width,
+          height
+        } = action;
+        return {
+          ...state,
+          canvasDims: {
+            width,
+            height
+          }
+        };
+      }
     case 'SET_MOUSE_DOWN':
     case 'SET_MOUSE_POS':
       return {
@@ -346,9 +703,10 @@ const rootReducer = (state, action) => {
 module.exports = {
   rootReducer
 };
-},{"../config":2,"../state":8,"./modalReducer":4,"./toolReducer":6,"bens_ui_components":31,"bens_utils":38}],6:[function(require,module,exports){
+},{"../config":6,"../render":11,"../state":12,"./modalReducer":8,"./toolReducer":10,"bens_ui_components":35,"bens_utils":42}],10:[function(require,module,exports){
 const {
-  render
+  render,
+  renderAction
 } = require('../render');
 const toolReducer = (state, action) => {
   switch (action.type) {
@@ -356,7 +714,8 @@ const toolReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'SELECT':
-      render(state);
+    case 'PASTE':
+      renderAction(state, action);
       return {
         ...state
       };
@@ -366,11 +725,11 @@ const toolReducer = (state, action) => {
 module.exports = {
   toolReducer
 };
-},{"../render":7}],7:[function(require,module,exports){
+},{"../render":11}],11:[function(require,module,exports){
 const {
   config
 } = require('./config');
-const render = state => {
+async function render(state) {
   const {
     ctx,
     canvasDims,
@@ -380,31 +739,83 @@ const render = state => {
   const paintAreaWidth = windowDims.width - config.toolBarWidth;
   const paintAreaHeight = windowDims.height - config.colorBarHeight;
   ctx.save();
-  ctx.fillStyle = 'white';
   const pxW = paintAreaWidth / canvasDims.width;
   const pxH = paintAreaHeight / canvasDims.height;
   ctx.scale(pxW, pxH);
-  ctx.fillRect(0, 0, canvasDims.width, canvasDims.height);
-  ctx.lineWidth = 4;
-  for (const action of state.actions) {
-    switch (action.type) {
-      case 'STROKE':
-        {
-          ctx.beginPath();
-          const line = action;
-          const start = mult(line.start, canvasDims);
-          const end = mult(line.end, canvasDims);
-          ctx.lineWidth = line.thickness || ctx.lineWidth;
-          ctx.strokeStyle = line.color;
-          ctx.moveTo(start.x, start.y);
-          ctx.lineTo(end.x, end.y);
-          ctx.stroke();
-          ctx.closePath();
-        }
+  ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
+  ctx.restore();
+  ctx.lineWidth = 2;
+  for (const actionList of state.actions) {
+    for (const action of actionList) {
+      await renderActionPromise(state, action);
     }
   }
-  ctx.restore();
+}
+const renderActionPromise = (state, action) => {
+  return new Promise((resolve, reject) => {
+    renderAction(state, action, resolve);
+  });
 };
+const renderAction = (state, action, resolve) => {
+  const {
+    ctx,
+    canvasDims,
+    windowDims
+  } = state;
+  if (!ctx) return;
+  ctx.save();
+  const paintAreaWidth = windowDims.width - config.toolBarWidth;
+  const paintAreaHeight = windowDims.height - config.colorBarHeight;
+  const pxW = paintAreaWidth / canvasDims.width;
+  const pxH = paintAreaHeight / canvasDims.height;
+  ctx.scale(pxW, pxH);
+  switch (action.type) {
+    case 'STROKE':
+      {
+        ctx.beginPath();
+        const line = action;
+        const start = mult(line.start, canvasDims);
+        const end = mult(line.end, canvasDims);
+        ctx.lineWidth = line.thickness || ctx.lineWidth;
+        ctx.strokeStyle = line.color;
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        ctx.closePath();
+        ctx.restore(); // NOTE: this has to be here for promise to work
+        if (resolve) resolve();
+        break;
+      }
+    case 'ERASE':
+      {
+        ctx.beginPath();
+        ctx.globalCompositeOperation = "destination-out";
+        const line = action;
+        const start = mult(line.start, canvasDims);
+        const end = mult(line.end, canvasDims);
+        ctx.lineWidth = line.thickness || ctx.lineWidth;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        ctx.closePath();
+        ctx.restore(); // NOTE: this has to be here for promise to work
+        if (resolve) resolve();
+        break;
+      }
+    case 'PASTE':
+      {
+        const pastedImage = new Image();
+        pastedImage.onload = function () {
+          ctx.drawImage(pastedImage, 0, 0);
+          if (resolve) resolve();
+        };
+        pastedImage.src = action.source;
+        ctx.restore(); // NOTE: this has to be here for promise to work
+      }
+  }
+};
+
 const mult = (pos, size) => {
   return {
     x: pos.x * size.width,
@@ -412,15 +823,19 @@ const mult = (pos, size) => {
   };
 };
 module.exports = {
-  render
+  render,
+  renderAction
 };
-},{"./config":2}],8:[function(require,module,exports){
+},{"./config":6}],12:[function(require,module,exports){
 const {
   config
 } = require('./config');
 const initState = () => {
   return {
+    modal: null,
     actions: [],
+    curAction: [],
+    // NOTE: action here is an array of redux actions
     redoActions: [],
     // canvas state
     canvasDims: {
@@ -433,11 +848,11 @@ const initState = () => {
     },
     ctx: null,
     // will get initialized in Main.react
-    imageData: null,
+
     // tool state
     tool: 'PEN',
     color: 'black',
-    thickness: 6,
+    thickness: 4,
     secondaryColor: 'white',
     mouse: undefined // will get defined by mouseReducer
   };
@@ -446,7 +861,7 @@ const initState = () => {
 module.exports = {
   initState
 };
-},{"./config":2}],9:[function(require,module,exports){
+},{"./config":6}],13:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const {
@@ -519,7 +934,7 @@ const AudioWidget = props => {
   }));
 };
 module.exports = AudioWidget;
-},{"./Button.react":11,"react":46}],10:[function(require,module,exports){
+},{"./Button.react":15,"react":50}],14:[function(require,module,exports){
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 const React = require('react');
 const CheckerBackground = require('./CheckerBackground.react.js');
@@ -638,7 +1053,7 @@ const Piece = props => {
   }, props.sprite);
 };
 module.exports = Board;
-},{"./CheckerBackground.react.js":14,"./DragArea.react.js":16,"react":46}],11:[function(require,module,exports){
+},{"./CheckerBackground.react.js":18,"./DragArea.react.js":20,"react":50}],15:[function(require,module,exports){
 const React = require('react');
 const {
   useState,
@@ -712,7 +1127,7 @@ function Button(props) {
   }, props.label);
 }
 module.exports = Button;
-},{"react":46}],12:[function(require,module,exports){
+},{"react":50}],16:[function(require,module,exports){
 const React = require('react');
 const {
   useResponsiveDimensions
@@ -761,7 +1176,7 @@ function Canvas(props) {
   }));
 }
 module.exports = React.memo(Canvas);
-},{"./hooks":29,"react":46}],13:[function(require,module,exports){
+},{"./hooks":33,"react":50}],17:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -794,7 +1209,7 @@ function Checkbox(props) {
   }
 }
 module.exports = Checkbox;
-},{"react":46}],14:[function(require,module,exports){
+},{"react":50}],18:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -804,7 +1219,7 @@ const React = require('react');
  *    - pixelSize: {width, height}, // board size in pixels
  *    - gridSize: {width, height}, // board size in squares
  */
-const CheckerboardBackground = props => {
+const CheckerBackground = props => {
   const {
     color1,
     color2,
@@ -814,8 +1229,8 @@ const CheckerboardBackground = props => {
   const cellWidth = pixelSize.width / gridSize.width;
   const cellHeight = pixelSize.height / gridSize.height;
   const squares = [];
-  for (let x = 0; x < gridSize.width; x++) {
-    for (let y = 0; y < gridSize.height; y++) {
+  for (let y = 0; y < gridSize.height; y++) {
+    for (let x = 0; x < gridSize.width; x++) {
       let backgroundColor = x % 2 == 1 ? color1 : color2;
       if (y % 2 == 1) {
         backgroundColor = x % 2 == 0 ? color1 : color2;
@@ -841,8 +1256,8 @@ const CheckerboardBackground = props => {
     }
   }, squares);
 };
-module.exports = CheckerboardBackground;
-},{"react":46}],15:[function(require,module,exports){
+module.exports = CheckerBackground;
+},{"react":50}],19:[function(require,module,exports){
 const React = require('react');
 function Divider(props) {
   const {
@@ -858,7 +1273,7 @@ function Divider(props) {
   });
 }
 module.exports = Divider;
-},{"react":46}],16:[function(require,module,exports){
+},{"react":50}],20:[function(require,module,exports){
 const React = require('react');
 const {
   useMouseHandler,
@@ -1106,7 +1521,7 @@ const clampToArea = (dragAreaID, pixel, style) => {
   };
 };
 module.exports = DragArea;
-},{"./hooks":29,"bens_utils":38,"react":46}],17:[function(require,module,exports){
+},{"./hooks":33,"bens_utils":42,"react":50}],21:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -1139,7 +1554,7 @@ const Dropdown = function (props) {
   }, optionTags);
 };
 module.exports = Dropdown;
-},{"react":46}],18:[function(require,module,exports){
+},{"react":50}],22:[function(require,module,exports){
 const React = require('react');
 const {
   useEffect,
@@ -1185,7 +1600,7 @@ const usePrevious = value => {
   return ref.current;
 };
 module.exports = Indicator;
-},{"react":46}],19:[function(require,module,exports){
+},{"react":50}],23:[function(require,module,exports){
 const React = require('react');
 const InfoCard = props => {
   const overrideStyle = props.style || {};
@@ -1209,7 +1624,7 @@ const InfoCard = props => {
   }, props.children);
 };
 module.exports = InfoCard;
-},{"react":46}],20:[function(require,module,exports){
+},{"react":50}],24:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Divider = require('./Divider.react');
@@ -1288,7 +1703,7 @@ function Modal(props) {
   }, buttonHTML)));
 }
 module.exports = Modal;
-},{"./Button.react":11,"./Divider.react":15,"react":46}],21:[function(require,module,exports){
+},{"./Button.react":15,"./Divider.react":19,"react":50}],25:[function(require,module,exports){
 const React = require('react');
 const {
   useState,
@@ -1370,7 +1785,7 @@ const submitValue = (onChange, nextVal, onlyInt) => {
   }
 };
 module.exports = NumberField;
-},{"react":46}],22:[function(require,module,exports){
+},{"react":50}],26:[function(require,module,exports){
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 /**
  * See ~/Code/teaching/clusters for an example of how to use the plot
@@ -1658,7 +2073,7 @@ const PlotWatcher = props => {
   }));
 };
 module.exports = PlotWatcher;
-},{"./Button.react":11,"./Canvas.react":12,"react":46}],23:[function(require,module,exports){
+},{"./Button.react":15,"./Canvas.react":16,"react":50}],27:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Modal = require('./Modal.react');
@@ -1741,7 +2156,7 @@ const quitGameModal = dispatch => {
   });
 };
 module.exports = QuitButton;
-},{"./Button.react":11,"./Modal.react":20,"bens_utils":38,"react":46}],24:[function(require,module,exports){
+},{"./Button.react":15,"./Modal.react":24,"bens_utils":42,"react":50}],28:[function(require,module,exports){
 const React = require('react');
 
 // props:
@@ -1768,7 +2183,7 @@ class RadioPicker extends React.Component {
   }
 }
 module.exports = RadioPicker;
-},{"react":46}],25:[function(require,module,exports){
+},{"react":50}],29:[function(require,module,exports){
 const React = require('react');
 const NumberField = require('./NumberField.react');
 const {
@@ -1838,7 +2253,7 @@ function Slider(props) {
   }), props.noOriginalValue ? null : "(" + originalValue + ")"));
 }
 module.exports = Slider;
-},{"./NumberField.react":21,"react":46}],26:[function(require,module,exports){
+},{"./NumberField.react":25,"react":50}],30:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -1882,7 +2297,7 @@ const SpriteSheet = props => {
   }));
 };
 module.exports = SpriteSheet;
-},{"react":46}],27:[function(require,module,exports){
+},{"react":50}],31:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Dropdown = require('./Dropdown.react');
@@ -2069,7 +2484,7 @@ function Table(props) {
   }, props.hideNumRows ? null : /*#__PURE__*/React.createElement("span", null, "Total Rows: ", rows.length, " Rows Displayed: ", filteredRows.length), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, headers)), /*#__PURE__*/React.createElement("tbody", null, rowHTML)));
 }
 module.exports = Table;
-},{"./Button.react":11,"./Dropdown.react":17,"react":46}],28:[function(require,module,exports){
+},{"./Button.react":15,"./Dropdown.react":21,"react":50}],32:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -2085,23 +2500,33 @@ const TextField = props => {
     value,
     placeholder,
     password,
+    id,
     onChange,
-    id
+    onBlur,
+    onFocus,
+    className
   } = props;
   const style = props.style != null ? props.style : {};
   return /*#__PURE__*/React.createElement("input", {
     id: id ? id : null,
+    className: className ? className : null,
     style: style,
     placeholder: placeholder,
     type: password ? 'password' : 'text',
     value: value,
     onChange: ev => {
-      onChange(ev.target.value);
+      if (props.onChange) onChange(ev.target.value);
+    },
+    onBlur: ev => {
+      if (props.onBlur) onBlur(ev.target.value);
+    },
+    onFocus: ev => {
+      if (props.onFocus) onFocus(ev.target.value);
     }
   });
 };
 module.exports = TextField;
-},{"react":46}],29:[function(require,module,exports){
+},{"react":50}],33:[function(require,module,exports){
 const React = require('react');
 const {
   throttle
@@ -2154,7 +2579,7 @@ const useResponsiveDimensions = onResize => {
       setWindowHeight(window.innerHeight);
     }
     handleResize();
-    window.addEventListener('resize', throttle(handleResize, [], 200));
+    window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
     };
@@ -2440,7 +2865,7 @@ module.exports = {
   useCompare,
   usePrevious
 };
-},{"bens_utils":38,"react":46}],30:[function(require,module,exports){
+},{"bens_utils":42,"react":50}],34:[function(require,module,exports){
 // type Point = {
 //   x: number,
 //   y: number,
@@ -2525,7 +2950,7 @@ const plotReducer = (state, action) => {
 module.exports = {
   plotReducer
 };
-},{}],31:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 
 // const React = require('react');
 // const ReactDOM = require('react-dom');
@@ -2559,7 +2984,7 @@ module.exports = {
 
 
 
-},{"./bin/AudioWidget.react.js":9,"./bin/Board.react.js":10,"./bin/Button.react.js":11,"./bin/Canvas.react.js":12,"./bin/Checkbox.react.js":13,"./bin/CheckerBackground.react.js":14,"./bin/Divider.react.js":15,"./bin/DragArea.react.js":16,"./bin/Dropdown.react.js":17,"./bin/Indicator.react.js":18,"./bin/InfoCard.react.js":19,"./bin/Modal.react.js":20,"./bin/NumberField.react.js":21,"./bin/Plot.react.js":22,"./bin/QuitButton.react.js":23,"./bin/RadioPicker.react.js":24,"./bin/Slider.react.js":25,"./bin/SpriteSheet.react.js":26,"./bin/Table.react.js":27,"./bin/TextField.react.js":28,"./bin/hooks.js":29,"./bin/plotReducer.js":30}],32:[function(require,module,exports){
+},{"./bin/AudioWidget.react.js":13,"./bin/Board.react.js":14,"./bin/Button.react.js":15,"./bin/Canvas.react.js":16,"./bin/Checkbox.react.js":17,"./bin/CheckerBackground.react.js":18,"./bin/Divider.react.js":19,"./bin/DragArea.react.js":20,"./bin/Dropdown.react.js":21,"./bin/Indicator.react.js":22,"./bin/InfoCard.react.js":23,"./bin/Modal.react.js":24,"./bin/NumberField.react.js":25,"./bin/Plot.react.js":26,"./bin/QuitButton.react.js":27,"./bin/RadioPicker.react.js":28,"./bin/Slider.react.js":29,"./bin/SpriteSheet.react.js":30,"./bin/Table.react.js":31,"./bin/TextField.react.js":32,"./bin/hooks.js":33,"./bin/plotReducer.js":34}],36:[function(require,module,exports){
 'use strict';
 
 function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
@@ -2723,7 +3148,7 @@ module.exports = {
   getEntityPositions: getEntityPositions,
   entityInsideGrid: entityInsideGrid
 };
-},{"./helpers":33,"./math":34,"./vectors":37}],33:[function(require,module,exports){
+},{"./helpers":37,"./math":38,"./vectors":41}],37:[function(require,module,exports){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
@@ -2870,7 +3295,7 @@ module.exports = {
   deepCopy: deepCopy,
   throttle: throttle
 };
-},{"./vectors":37}],34:[function(require,module,exports){
+},{"./vectors":41}],38:[function(require,module,exports){
 "use strict";
 
 var clamp = function clamp(val, min, max) {
@@ -2915,7 +3340,7 @@ module.exports = {
   clamp: clamp,
   subtractWithDeficit: subtractWithDeficit
 };
-},{}],35:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 'use strict';
 
 function isIpad() {
@@ -2946,7 +3371,7 @@ module.exports = {
   isMobile: isMobile,
   isPhone: isPhone
 };
-},{}],36:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 "use strict";
 
 var floor = Math.floor,
@@ -3001,7 +3426,7 @@ module.exports = {
   oneOf: oneOf,
   weightedOneOf: weightedOneOf
 };
-},{}],37:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 "use strict";
 
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
@@ -3200,7 +3625,7 @@ module.exports = {
   rotate: rotate,
   abs: abs
 };
-},{}],38:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 
 module.exports = {
   vectors: require('./bin/vectors'),
@@ -3211,7 +3636,7 @@ module.exports = {
   math: require('./bin/math'),
 }
 
-},{"./bin/gridHelpers":32,"./bin/helpers":33,"./bin/math":34,"./bin/platform":35,"./bin/stochastic":36,"./bin/vectors":37}],39:[function(require,module,exports){
+},{"./bin/gridHelpers":36,"./bin/helpers":37,"./bin/math":38,"./bin/platform":39,"./bin/stochastic":40,"./bin/vectors":41}],43:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -3397,7 +3822,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],40:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 (function (process){(function (){
 /**
  * @license React
@@ -8352,7 +8777,7 @@ if(/^(https?|file):$/.test(protocol)){// eslint-disable-next-line react-internal
 console.info('%cDownload the React DevTools '+'for a better development experience: '+'https://reactjs.org/link/react-devtools'+(protocol==='file:'?'\nYou might need to use a local HTTP server (instead of file://): '+'https://reactjs.org/link/react-devtools-faq':''),'font-weight:bold');}}}}exports.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED=Internals;exports.createPortal=createPortal$1;exports.createRoot=createRoot$1;exports.findDOMNode=findDOMNode;exports.flushSync=flushSync$1;exports.hydrate=hydrate;exports.hydrateRoot=hydrateRoot$1;exports.render=render;exports.unmountComponentAtNode=unmountComponentAtNode;exports.unstable_batchedUpdates=batchedUpdates$1;exports.unstable_renderSubtreeIntoContainer=renderSubtreeIntoContainer;exports.version=ReactVersion;/* global __REACT_DEVTOOLS_GLOBAL_HOOK__ */if(typeof __REACT_DEVTOOLS_GLOBAL_HOOK__!=='undefined'&&typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop==='function'){__REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(new Error());}})();}
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":39,"react":46,"scheduler":49}],41:[function(require,module,exports){
+},{"_process":43,"react":50,"scheduler":53}],45:[function(require,module,exports){
 /**
  * @license React
  * react-dom.production.min.js
@@ -8677,7 +9102,7 @@ exports.hydrateRoot=function(a,b,c){if(!ol(a))throw Error(p(405));var d=null!=c&
 e);return new nl(b)};exports.render=function(a,b,c){if(!pl(b))throw Error(p(200));return sl(null,a,b,!1,c)};exports.unmountComponentAtNode=function(a){if(!pl(a))throw Error(p(40));return a._reactRootContainer?(Sk(function(){sl(null,null,a,!1,function(){a._reactRootContainer=null;a[uf]=null})}),!0):!1};exports.unstable_batchedUpdates=Rk;
 exports.unstable_renderSubtreeIntoContainer=function(a,b,c,d){if(!pl(c))throw Error(p(200));if(null==a||void 0===a._reactInternals)throw Error(p(38));return sl(a,b,c,!1,d)};exports.version="18.2.0-next-9e3b772b8-20220608";
 
-},{"react":46,"scheduler":49}],42:[function(require,module,exports){
+},{"react":50,"scheduler":53}],46:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -8706,7 +9131,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":39,"react-dom":43}],43:[function(require,module,exports){
+},{"_process":43,"react-dom":47}],47:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -8748,7 +9173,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/react-dom.development.js":40,"./cjs/react-dom.production.min.js":41,"_process":39}],44:[function(require,module,exports){
+},{"./cjs/react-dom.development.js":44,"./cjs/react-dom.production.min.js":45,"_process":43}],48:[function(require,module,exports){
 (function (process){(function (){
 /**
  * @license React
@@ -11153,7 +11578,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":39}],45:[function(require,module,exports){
+},{"_process":43}],49:[function(require,module,exports){
 /**
  * @license React
  * react.production.min.js
@@ -11181,7 +11606,7 @@ exports.useCallback=function(a,b){return U.current.useCallback(a,b)};exports.use
 exports.useInsertionEffect=function(a,b){return U.current.useInsertionEffect(a,b)};exports.useLayoutEffect=function(a,b){return U.current.useLayoutEffect(a,b)};exports.useMemo=function(a,b){return U.current.useMemo(a,b)};exports.useReducer=function(a,b,e){return U.current.useReducer(a,b,e)};exports.useRef=function(a){return U.current.useRef(a)};exports.useState=function(a){return U.current.useState(a)};exports.useSyncExternalStore=function(a,b,e){return U.current.useSyncExternalStore(a,b,e)};
 exports.useTransition=function(){return U.current.useTransition()};exports.version="18.2.0";
 
-},{}],46:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -11192,7 +11617,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/react.development.js":44,"./cjs/react.production.min.js":45,"_process":39}],47:[function(require,module,exports){
+},{"./cjs/react.development.js":48,"./cjs/react.production.min.js":49,"_process":43}],51:[function(require,module,exports){
 (function (process,setImmediate){(function (){
 /**
  * @license React
@@ -11830,7 +12255,7 @@ if (
 }
 
 }).call(this)}).call(this,require('_process'),require("timers").setImmediate)
-},{"_process":39,"timers":50}],48:[function(require,module,exports){
+},{"_process":43,"timers":54}],52:[function(require,module,exports){
 (function (setImmediate){(function (){
 /**
  * @license React
@@ -11853,7 +12278,7 @@ exports.unstable_scheduleCallback=function(a,b,c){var d=exports.unstable_now();"
 exports.unstable_shouldYield=M;exports.unstable_wrapCallback=function(a){var b=y;return function(){var c=y;y=b;try{return a.apply(this,arguments)}finally{y=c}}};
 
 }).call(this)}).call(this,require("timers").setImmediate)
-},{"timers":50}],49:[function(require,module,exports){
+},{"timers":54}],53:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -11864,7 +12289,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/scheduler.development.js":47,"./cjs/scheduler.production.min.js":48,"_process":39}],50:[function(require,module,exports){
+},{"./cjs/scheduler.development.js":51,"./cjs/scheduler.production.min.js":52,"_process":43}],54:[function(require,module,exports){
 (function (setImmediate,clearImmediate){(function (){
 var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
@@ -11943,4 +12368,4 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
   delete immediateIds[id];
 };
 }).call(this)}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
-},{"process/browser.js":39,"timers":50}]},{},[3]);
+},{"process/browser.js":43,"timers":54}]},{},[7]);
