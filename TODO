@@ -1,13 +1,19 @@
 
+  - resizing screen
+    - fails with bucket tool
+    - makes checkerboard background alias
+    - occasionally draws double
+
+  - bucket tool:
+    - save in action history which pixels were painted so it can redo faster
   - select
     - dragArea w/dragable canvas of selection(s)
     - drag handles to resize dragables
     - switching tools commits selections back to regular canvas
   - implement the rest of the tools
-    - bucket fill
-    - square, line
+    - square
+      - preview square
   - implement per-tool settings
-    - line/eraser thickness
     - square filled vs not (+ secondary color fill + border)
     - cut/copy
   - more colors

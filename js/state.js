@@ -17,7 +17,11 @@ const initState = () => {
     tool: 'PEN',
     color: 'black',
     thickness: 4,
+    square: null, // square that's being currently drawn
+    squareType: 'Filled',
+    fuzzFactor: 0,
     secondaryColor: 'white',
+
     mouse: undefined, // will get defined by mouseReducer
   };
 };

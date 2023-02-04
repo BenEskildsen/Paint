@@ -14,6 +14,7 @@ const {render} = require('../render');
 const ColorBar = require('./ColorBar.react');
 const ToolBar = require('./ToolBar.react');
 const PaintArea = require('./PaintArea.react');
+const {getTrueCanvasDims} = require('../selectors/canvas');
 const {useEffect, useState, useMemo} = React;
 
 
@@ -38,7 +39,7 @@ function Main(props) {
   useEffect(() => {
     if (!state?.ctx) return;
     render(getState());
-  }, [state.ctx, state.windowDims, state.canvasDims]);
+  }, [state.ctx, getTrueCanvasDims(state).width, state.canvasDims]);
 
   return (
     <div

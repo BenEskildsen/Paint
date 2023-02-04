@@ -1,6 +1,6 @@
 const config = {
   tools: [
-    'ERASER', 'PEN', 'BUCKET', 'SELECT', 'PIPETTE',
+    'ERASER', 'PEN', 'BUCKET', 'SQUARE', 'SELECT', 'PIPETTE',
   ],
   edits: [
     'UNDO', 'REDO', 'ERASE ALL',
@@ -15,7 +15,7 @@ const config = {
   // dimensions
   initialWidth: 700,
   initialHeight: 500,
-  toolBarWidth: 100,
+  toolBarWidth: 150,
   colorBarHeight: 75,
 };
 

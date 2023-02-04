@@ -98,7 +98,7 @@ const ColorBar = props => {
   })));
 };
 module.exports = ColorBar;
-},{"../config":6,"bens_ui_components":35,"react":50}],2:[function(require,module,exports){
+},{"../config":6,"bens_ui_components":38,"react":53}],2:[function(require,module,exports){
 const React = require('react');
 const {
   Button,
@@ -127,6 +127,9 @@ const {
 const ColorBar = require('./ColorBar.react');
 const ToolBar = require('./ToolBar.react');
 const PaintArea = require('./PaintArea.react');
+const {
+  getTrueCanvasDims
+} = require('../selectors/canvas');
 const {
   useEffect,
   useState,
@@ -158,7 +161,7 @@ function Main(props) {
   useEffect(() => {
     if (!(state !== null && state !== void 0 && state.ctx)) return;
     render(getState());
-  }, [state.ctx, state.windowDims, state.canvasDims]);
+  }, [state.ctx, getTrueCanvasDims(state).width, state.canvasDims]);
   return /*#__PURE__*/React.createElement("div", {
     style: {
       backgroundColor: 'gray',
@@ -187,7 +190,7 @@ function Main(props) {
   }), state.modal);
 }
 module.exports = Main;
-},{"../config":6,"../reducers/rootReducer":9,"../render":11,"../state":12,"./ColorBar.react":1,"./PaintArea.react":3,"./ToolBar.react":5,"bens_ui_components":35,"react":50}],3:[function(require,module,exports){
+},{"../config":6,"../reducers/rootReducer":9,"../render":11,"../selectors/canvas":12,"../state":15,"./ColorBar.react":1,"./PaintArea.react":3,"./ToolBar.react":5,"bens_ui_components":38,"react":53}],3:[function(require,module,exports){
 const React = require('react');
 const {
   Button,
@@ -203,6 +206,19 @@ const {
   mouseReducer
 } = require('bens_ui_components');
 const {
+  getColorAtPixel,
+  colorToHex,
+  colorToRGBA,
+  stringToColor
+} = require('../selectors/colors');
+const {
+  getNeighbors,
+  insideCanvas
+} = require('../selectors/pixels');
+const {
+  getTrueCanvasDims
+} = require('../selectors/canvas');
+const {
   config
 } = require('../config');
 const {
@@ -210,12 +226,6 @@ const {
   useState,
   useMemo
 } = React;
-const div = (pos, size) => {
-  return {
-    x: pos.x / size.width,
-    y: pos.y / size.height
-  };
-};
 const toolToVerb = {
   'PEN': 'STROKE',
   'ERASER': 'ERASE'
@@ -234,25 +244,24 @@ const PaintArea = props => {
     width: windowDims.width - config.toolBarWidth,
     height: windowDims.height - config.colorBarHeight
   };
-  let width = canvasDims.width;
-  let height = canvasDims.height;
-  if (paintAreaDims.height < height) {
-    width = width * (paintAreaDims.height / height);
-    height = paintAreaDims.height;
-  }
-  if (paintAreaDims.width < width) {
-    height = height * (paintAreaDims.width / width);
-    width = paintAreaDims.width;
-  }
+  const {
+    width,
+    height
+  } = getTrueCanvasDims(state);
   useMouseHandler("canvas", {
     dispatch,
     getState
   }, {
     leftDown: (state, dispatch, pos) => {
       if (state.tool == 'PIPETTE') {
-        const px = state.ctx.getImageData(pos.x, pos.y, 1, 1).data;
         dispatch({
-          color: 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')'
+          color: colorToRGBA(getColorAtPixel(state.ctx, pos))
+        });
+      } else if (state.tool == 'SQUARE') {
+        dispatch({
+          square: {
+            ...pos
+          }
         });
       } else {
         dispatch({
@@ -268,20 +277,24 @@ const PaintArea = props => {
           inMove: true
         });
         const {
+          width,
+          height
+        } = getTrueCanvasDims(state);
+        const {
           canvasDims
         } = state;
         if (state.prevInteractPos) {
           const prevPos = state.prevInteractPos;
           dispatch({
             type: toolToVerb[state.tool],
-            start: div(prevPos, {
-              width: paintAreaDims.width,
-              height: paintAreaDims.height
-            }),
-            end: div(pos, {
-              width: paintAreaDims.width,
-              height: paintAreaDims.height
-            }),
+            start: {
+              x: prevPos.x * canvasDims.width / width,
+              y: prevPos.y * canvasDims.height / height
+            },
+            end: {
+              x: pos.x * canvasDims.width / width,
+              y: pos.y * canvasDims.height / height
+            },
             color: state.color,
             thickness: state.thickness
           });
@@ -293,23 +306,66 @@ const PaintArea = props => {
             prevInteractPos: pos
           });
         }
-      } else if (state.tool == 'PIPETTE') {
-        const px = state.ctx.getImageData(pos.x, pos.y, 1, 1).data;
+      } else if (state.tool == 'PIPETTE' || state.tool == 'BUCKET') {
         dispatch({
-          colorPreview: 'rgb(' + px[0] + ',' + px[1] + ',' + px[2] + ')'
+          colorPreview: colorToRGBA(getColorAtPixel(state.ctx, pos))
+        });
+      } else if (state.tool == 'SQUARE') {
+        var _state$mouse2;
+        if (!(state !== null && state !== void 0 && (_state$mouse2 = state.mouse) !== null && _state$mouse2 !== void 0 && _state$mouse2.isLeftDown)) return;
+        dispatch({
+          square: {
+            ...state.square,
+            width: pos.x - state.square.x,
+            height: pos.y - state.square.y
+          }
         });
       }
     },
-    leftUp: (state, dispatch, gridPos) => {
-      dispatch({
-        type: 'END_ACTION'
-      });
-      dispatch({
-        inMove: false
-      });
-      dispatch({
-        prevInteractPos: null
-      });
+    leftUp: (state, dispatch, pos) => {
+      if (state.tool == 'BUCKET') {
+        dispatch({
+          type: 'START_ACTION'
+        });
+        dispatch({
+          type: 'FILL',
+          position: {
+            x: Math.round(pos.x),
+            y: Math.round(pos.y)
+          },
+          color: state.color,
+          fuzzFactor: state.fuzzFactor
+        });
+        dispatch({
+          type: 'END_ACTION'
+        });
+      } else if (state.tool == 'SQUARE') {
+        dispatch({
+          type: 'START_ACTION'
+        });
+        dispatch({
+          type: 'DRAW_SQUARE',
+          thickness: state.thickness,
+          squareType: state.squareType,
+          color: state.color,
+          square: {
+            ...state.square
+          }
+        });
+        dispatch({
+          type: 'END_ACTION'
+        });
+      } else {
+        dispatch({
+          type: 'END_ACTION'
+        });
+        dispatch({
+          inMove: false
+        });
+        dispatch({
+          prevInteractPos: null
+        });
+      }
     }
   });
 
@@ -376,7 +432,7 @@ const PaintArea = props => {
   }));
 };
 module.exports = PaintArea;
-},{"../config":6,"bens_ui_components":35,"react":50}],4:[function(require,module,exports){
+},{"../config":6,"../selectors/canvas":12,"../selectors/colors":13,"../selectors/pixels":14,"bens_ui_components":38,"react":53}],4:[function(require,module,exports){
 const React = require('react');
 const {
   Modal,
@@ -454,14 +510,20 @@ const SettingsModal = props => {
   });
 };
 module.exports = SettingsModal;
-},{"../render":11,"bens_ui_components":35,"react":50}],5:[function(require,module,exports){
+},{"../render":11,"bens_ui_components":38,"react":53}],5:[function(require,module,exports){
 const React = require('react');
 const {
   Button,
   Modal,
   Canvas,
-  RadioPicker
+  RadioPicker,
+  Slider
 } = require('bens_ui_components');
+const {
+  colorToHex,
+  colorToRGBA,
+  rgbaToColor
+} = require('../selectors/colors');
 const SettingsModal = require('./SettingsModal.react');
 const {
   config
@@ -480,6 +542,10 @@ const ToolBar = props => {
   const toolButtons = [];
   for (const tool of config.tools) {
     toolButtons.push( /*#__PURE__*/React.createElement(Button, {
+      style: {
+        margin: '0 auto',
+        width: '75%'
+      },
       key: "toolButton_" + tool,
       disabled: state.tool == tool,
       label: tool,
@@ -495,7 +561,8 @@ const ToolBar = props => {
       borderRight: '1px solid black',
       display: 'flex',
       flexDirection: 'column',
-      textAlign: 'center'
+      textAlign: 'center',
+      paddingTop: 5
     }
   }, /*#__PURE__*/React.createElement(Button, {
     label: "Settings",
@@ -505,8 +572,12 @@ const ToolBar = props => {
         modal: /*#__PURE__*/React.createElement(SettingsModal, props)
       });
     }
-  }), /*#__PURE__*/React.createElement(Button, {
+  }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
     label: "Undo",
+    style: {
+      width: '50%',
+      display: 'inline'
+    },
     onClick: () => {
       dispatch({
         type: 'UNDO'
@@ -514,17 +585,21 @@ const ToolBar = props => {
     }
   }), /*#__PURE__*/React.createElement(Button, {
     label: "Redo",
+    style: {
+      width: '50%',
+      display: 'inline'
+    },
     onClick: () => {
       dispatch({
         type: 'REDO'
       });
     }
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 5,
       marginBottom: 5
     }
-  }, "Tools"), toolButtons, /*#__PURE__*/React.createElement(ToolParameters, props));
+  }, /*#__PURE__*/React.createElement("b", null, "Tools")), toolButtons, /*#__PURE__*/React.createElement(ToolParameters, props));
 };
 const ToolParameters = props => {
   const {
@@ -533,36 +608,109 @@ const ToolParameters = props => {
   } = props;
   let content = null;
   if (state.tool == 'PIPETTE') {
-    content = /*#__PURE__*/React.createElement("div", {
+    let color = {
+      r: 0,
+      g: 0,
+      b: 0,
+      a: 0
+    };
+    if (state.colorPreview) {
+      color = rgbaToColor(state.colorPreview);
+    }
+    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       style: {
         backgroundColor: state.colorPreview,
-        width: 25,
-        height: 25,
+        width: 50,
+        height: 50,
         margin: 'auto',
         marginTop: 5
       }
-    });
+    }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10
+      }
+    }, colorToRGBA(color)));
+  } else if (state.tool == 'BUCKET') {
+    let color = {
+      r: 0,
+      g: 0,
+      b: 0,
+      a: 0
+    };
+    if (state.colorPreview) {
+      color = rgbaToColor(state.colorPreview);
+    }
+    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      style: {
+        backgroundColor: state.colorPreview,
+        width: 50,
+        height: 50,
+        margin: 'auto',
+        marginTop: 5
+      }
+    }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10
+      }
+    }, colorToRGBA(color)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Fuzz Factor"), /*#__PURE__*/React.createElement(Slider, {
+      min: 0,
+      max: 255,
+      value: state.fuzzFactor,
+      onChange: fuzzFactor => dispatch({
+        fuzzFactor
+      })
+    })));
+  } else if (state.tool == 'ERASER' || state.tool == 'PEN') {
+    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Stroke Thickness"), /*#__PURE__*/React.createElement(Slider, {
+      min: 1,
+      max: 20,
+      value: state.thickness,
+      onChange: thickness => dispatch({
+        thickness
+      })
+    }));
+  } else if (state.tool = 'SQUARE') {
+    const thickness = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Border Thickness"), /*#__PURE__*/React.createElement(Slider, {
+      min: 1,
+      max: 20,
+      value: state.thickness,
+      onChange: thickness => dispatch({
+        thickness
+      })
+    }));
+    content = /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginBottom: 10
+      }
+    }, /*#__PURE__*/React.createElement(RadioPicker, {
+      options: ["Filled", "Empty"],
+      selected: state.squareType,
+      onChange: squareType => dispatch({
+        squareType
+      })
+    }), state.squareType == 'Empty' ? thickness : null);
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
       margin: '5px',
       backgroundColor: 'ghostwhite',
       height: 200,
-      border: '4px inset grey'
+      border: '4px inset grey',
+      paddingTop: 4
     }
   }, content);
 };
 module.exports = ToolBar;
-},{"../config":6,"./SettingsModal.react":4,"bens_ui_components":35,"react":50}],6:[function(require,module,exports){
+},{"../config":6,"../selectors/colors":13,"./SettingsModal.react":4,"bens_ui_components":38,"react":53}],6:[function(require,module,exports){
 const config = {
-  tools: ['ERASER', 'PEN', 'BUCKET', 'SELECT', 'PIPETTE'],
+  tools: ['ERASER', 'PEN', 'BUCKET', 'SQUARE', 'SELECT', 'PIPETTE'],
   edits: ['UNDO', 'REDO', 'ERASE ALL'],
   colors: ['black', 'darkgray', 'red', 'green', 'blue', 'orange', 'purple'],
   colors2: ['white', 'lightgray', '#CD5C5C', '#90EE90', 'steelblue', '#FA8072', 'pink'],
   // dimensions
   initialWidth: 700,
   initialHeight: 500,
-  toolBarWidth: 100,
+  toolBarWidth: 150,
   colorBarHeight: 75
 };
 module.exports = {
@@ -581,7 +729,7 @@ function renderUI(root) {
 const root = _client.default.createRoot(document.getElementById('container'));
 renderUI(root);
 
-},{"./UI/Main.react":2,"react":50,"react-dom/client":46}],8:[function(require,module,exports){
+},{"./UI/Main.react":2,"react":53,"react-dom/client":49}],8:[function(require,module,exports){
 const modalReducer = (state, action) => {
   switch (action.type) {
     case 'DISMISS_MODAL':
@@ -644,6 +792,7 @@ const rootReducer = (state, action) => {
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
+    case 'DRAW_SQUARE':
     case 'SELECT':
     case 'PASTE':
       state.curAction.push(action);
@@ -703,7 +852,7 @@ const rootReducer = (state, action) => {
 module.exports = {
   rootReducer
 };
-},{"../config":6,"../render":11,"../state":12,"./modalReducer":8,"./toolReducer":10,"bens_ui_components":35,"bens_utils":42}],10:[function(require,module,exports){
+},{"../config":6,"../render":11,"../state":15,"./modalReducer":8,"./toolReducer":10,"bens_ui_components":38,"bens_utils":45}],10:[function(require,module,exports){
 const {
   render,
   renderAction
@@ -713,6 +862,7 @@ const toolReducer = (state, action) => {
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
+    case 'DRAW_SQUARE':
     case 'SELECT':
     case 'PASTE':
       renderAction(state, action);
@@ -729,6 +879,18 @@ module.exports = {
 const {
   config
 } = require('./config');
+const {
+  getColorAtPixel,
+  colorToHex,
+  colorToRGBA,
+  stringToColor
+} = require('./selectors/colors');
+const {
+  getTrueCanvasDims
+} = require('./selectors/canvas');
+const {
+  getNeighbors
+} = require('./selectors/pixels');
 async function render(state) {
   const {
     ctx,
@@ -736,15 +898,16 @@ async function render(state) {
     windowDims
   } = state;
   if (!ctx) return;
-  const paintAreaWidth = windowDims.width - config.toolBarWidth;
-  const paintAreaHeight = windowDims.height - config.colorBarHeight;
+  const {
+    width,
+    height
+  } = getTrueCanvasDims(state);
   ctx.save();
-  const pxW = paintAreaWidth / canvasDims.width;
-  const pxH = paintAreaHeight / canvasDims.height;
+  const pxW = width / canvasDims.width;
+  const pxH = height / canvasDims.height;
   ctx.scale(pxW, pxH);
   ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
   ctx.restore();
-  ctx.lineWidth = 2;
   for (const actionList of state.actions) {
     for (const action of actionList) {
       await renderActionPromise(state, action);
@@ -764,18 +927,22 @@ const renderAction = (state, action, resolve) => {
   } = state;
   if (!ctx) return;
   ctx.save();
-  const paintAreaWidth = windowDims.width - config.toolBarWidth;
-  const paintAreaHeight = windowDims.height - config.colorBarHeight;
-  const pxW = paintAreaWidth / canvasDims.width;
-  const pxH = paintAreaHeight / canvasDims.height;
+  const {
+    width,
+    height
+  } = getTrueCanvasDims(state);
+  const pxW = width / canvasDims.width;
+  const pxH = height / canvasDims.height;
+  ctx.imageSmoothingEnabled = false;
   ctx.scale(pxW, pxH);
+  ctx.translate(0.5, 0.5);
   switch (action.type) {
     case 'STROKE':
       {
         ctx.beginPath();
         const line = action;
-        const start = mult(line.start, canvasDims);
-        const end = mult(line.end, canvasDims);
+        const start = line.start;
+        const end = line.end;
         ctx.lineWidth = line.thickness || ctx.lineWidth;
         ctx.strokeStyle = line.color;
         ctx.moveTo(start.x, start.y);
@@ -791,8 +958,8 @@ const renderAction = (state, action, resolve) => {
         ctx.beginPath();
         ctx.globalCompositeOperation = "destination-out";
         const line = action;
-        const start = mult(line.start, canvasDims);
-        const end = mult(line.end, canvasDims);
+        const start = line.start;
+        const end = line.end;
         ctx.lineWidth = line.thickness || ctx.lineWidth;
         ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
         ctx.moveTo(start.x, start.y);
@@ -812,21 +979,217 @@ const renderAction = (state, action, resolve) => {
         };
         pastedImage.src = action.source;
         ctx.restore(); // NOTE: this has to be here for promise to work
+        break;
+      }
+    case 'FILL':
+      {
+        const {
+          position,
+          fuzzFactor
+        } = action;
+        const color = stringToColor(action.color);
+        const colorToFill = getColorAtPixel(ctx, position);
+        const imageData = ctx.getImageData(0, 0, canvasDims.width, canvasDims.height);
+        const alreadyVisited = {};
+        const pixels = [position];
+        while (pixels.length > 0) {
+          const pixel = pixels.pop();
+          alreadyVisited[posToStr(pixel)] = true;
+          setPixelColor(imageData, canvasDims, pixel, color);
+          const neighbors = getNeighbors(pixel, canvasDims).filter(pos => {
+            if (alreadyVisited[posToStr(pos)]) return false;
+            const colorAtPixel = getColorAtPixel(ctx, pos);
+            for (let c of ['r', 'g', 'b']) {
+              if (Math.abs(colorAtPixel[c] - colorToFill[c]) > fuzzFactor) {
+                return false;
+              }
+            }
+            return Math.abs(colorAtPixel.a * 255 - colorToFill.a * 255) <= fuzzFactor * 2;
+          });
+          // console.log(neighbors);
+          pixels.push(...neighbors);
+        }
+        ctx.putImageData(imageData, 0, 0);
+        ctx.restore(); // NOTE: this has to be here for promise to work
+        if (resolve) resolve();
+        break;
+      }
+    case 'DRAW_SQUARE':
+      {
+        const {
+          square,
+          squareType,
+          thickness,
+          color
+        } = action;
+        ctx.lineWidth = thickness || ctx.lineWidth;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        if (squareType == 'Filled') {
+          ctx.fillRect(square.x, square.y, square.width, square.height);
+        } else if (squareType == 'Empty') {
+          ctx.beginPath();
+          ctx.rect(square.x, square.y, square.width, square.height);
+          ctx.closePath();
+          ctx.stroke();
+        }
+        ctx.restore(); // NOTE: this has to be here for promise to work
+        if (resolve) resolve();
+        break;
       }
   }
 };
-
-const mult = (pos, size) => {
-  return {
-    x: pos.x * size.width,
-    y: pos.y * size.height
-  };
+const posToStr = pos => {
+  return `${pos.x}_${pos.y}`;
+};
+const setPixelColor = (imageData, canvasDims, pos, color) => {
+  const index = 4 * pos.y * canvas.width + 4 * pos.x;
+  imageData.data[index] = color.r;
+  imageData.data[index + 1] = color.g;
+  imageData.data[index + 2] = color.b;
+  if (color.a !== undefined) {
+    imageData.data[index + 3] = color.a * 255;
+  } else {
+    imageData.data[index + 3] = 255;
+  }
 };
 module.exports = {
   render,
-  renderAction
+  renderAction,
+  setPixelColor
 };
-},{"./config":6}],12:[function(require,module,exports){
+},{"./config":6,"./selectors/canvas":12,"./selectors/colors":13,"./selectors/pixels":14}],12:[function(require,module,exports){
+const {
+  config
+} = require('../config');
+const getTrueCanvasDims = state => {
+  const {
+    canvasDims,
+    windowDims
+  } = state;
+  const paintAreaDims = {
+    width: windowDims.width - config.toolBarWidth,
+    height: windowDims.height - config.colorBarHeight
+  };
+  let width = canvasDims.width;
+  let height = canvasDims.height;
+  if (paintAreaDims.height < height) {
+    width = width * (paintAreaDims.height / height);
+    height = paintAreaDims.height;
+  }
+  if (paintAreaDims.width < width) {
+    height = height * (paintAreaDims.width / width);
+    width = paintAreaDims.width;
+  }
+  return {
+    width,
+    height
+  };
+};
+module.exports = {
+  getTrueCanvasDims
+};
+},{"../config":6}],13:[function(require,module,exports){
+const getColorAtPixel = (ctx, pos) => {
+  const px = ctx.getImageData(pos.x, pos.y, 1, 1).data;
+  return {
+    r: px[0],
+    g: px[1],
+    b: px[2],
+    a: parseFloat((px[3] / 255).toFixed(2))
+  };
+};
+const colorToRGBA = color => {
+  const {
+    r,
+    g,
+    b,
+    a
+  } = color;
+  return `rgba(${r},${g},${b},${a})`;
+};
+const colorToRGB = color => {
+  const {
+    r,
+    g,
+    b
+  } = color;
+  return `rgb(${r},${g},${b})`;
+};
+const colorToHex = color => {
+  const {
+    r,
+    g,
+    b
+  } = color;
+  return `#${cToHex(r)}${cToHex(g)}${cToHex(b)}`;
+};
+const cToHex = c => {
+  const hex = c.toString(16);
+  return hex.length == 1 ? "0" + hex : hex;
+};
+const rgbaToColor = rgba => {
+  const px = rgba.slice(5, -1).split(',').map((n, i) => {
+    if (i < 3) {
+      return parseInt(n);
+    } else {
+      return parseFloat(n);
+    }
+  });
+  return {
+    r: px[0],
+    g: px[1],
+    b: px[2],
+    a: px[3]
+  };
+};
+
+// color into the canvas then extract that color
+const stringToColor = colorStr => {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = colorStr;
+  ctx.fillRect(0, 0, 1, 1);
+  return getColorAtPixel(ctx, {
+    x: 0,
+    y: 0
+  });
+};
+module.exports = {
+  getColorAtPixel,
+  colorToRGBA,
+  colorToRGB,
+  colorToHex,
+  rgbaToColor,
+  stringToColor
+};
+},{}],14:[function(require,module,exports){
+const getNeighbors = (pos, canvasDims) => {
+  let neighbors = [{
+    x: pos.x - 1,
+    y: pos.y
+  }, {
+    x: pos.x + 1,
+    y: pos.y
+  }, {
+    x: pos.x,
+    y: pos.y - 1
+  }, {
+    x: pos.x,
+    y: pos.y + 1
+  }];
+  return neighbors.filter(p => insideCanvas(p, canvasDims));
+};
+const insideCanvas = (pos, canvasDims) => {
+  return pos.x >= 0 && pos.y >= 0 && pos.x < canvasDims.width && pos.y < canvasDims.height;
+};
+module.exports = {
+  getNeighbors,
+  insideCanvas
+};
+},{}],15:[function(require,module,exports){
 const {
   config
 } = require('./config');
@@ -853,6 +1216,10 @@ const initState = () => {
     tool: 'PEN',
     color: 'black',
     thickness: 4,
+    square: null,
+    // square that's being currently drawn
+    squareType: 'Filled',
+    fuzzFactor: 0,
     secondaryColor: 'white',
     mouse: undefined // will get defined by mouseReducer
   };
@@ -861,7 +1228,7 @@ const initState = () => {
 module.exports = {
   initState
 };
-},{"./config":6}],13:[function(require,module,exports){
+},{"./config":6}],16:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const {
@@ -934,7 +1301,7 @@ const AudioWidget = props => {
   }));
 };
 module.exports = AudioWidget;
-},{"./Button.react":15,"react":50}],14:[function(require,module,exports){
+},{"./Button.react":18,"react":53}],17:[function(require,module,exports){
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 const React = require('react');
 const CheckerBackground = require('./CheckerBackground.react.js');
@@ -1053,7 +1420,7 @@ const Piece = props => {
   }, props.sprite);
 };
 module.exports = Board;
-},{"./CheckerBackground.react.js":18,"./DragArea.react.js":20,"react":50}],15:[function(require,module,exports){
+},{"./CheckerBackground.react.js":21,"./DragArea.react.js":23,"react":53}],18:[function(require,module,exports){
 const React = require('react');
 const {
   useState,
@@ -1127,7 +1494,7 @@ function Button(props) {
   }, props.label);
 }
 module.exports = Button;
-},{"react":50}],16:[function(require,module,exports){
+},{"react":53}],19:[function(require,module,exports){
 const React = require('react');
 const {
   useResponsiveDimensions
@@ -1176,7 +1543,7 @@ function Canvas(props) {
   }));
 }
 module.exports = React.memo(Canvas);
-},{"./hooks":33,"react":50}],17:[function(require,module,exports){
+},{"./hooks":36,"react":53}],20:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -1209,7 +1576,7 @@ function Checkbox(props) {
   }
 }
 module.exports = Checkbox;
-},{"react":50}],18:[function(require,module,exports){
+},{"react":53}],21:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -1257,7 +1624,7 @@ const CheckerBackground = props => {
   }, squares);
 };
 module.exports = CheckerBackground;
-},{"react":50}],19:[function(require,module,exports){
+},{"react":53}],22:[function(require,module,exports){
 const React = require('react');
 function Divider(props) {
   const {
@@ -1273,7 +1640,7 @@ function Divider(props) {
   });
 }
 module.exports = Divider;
-},{"react":50}],20:[function(require,module,exports){
+},{"react":53}],23:[function(require,module,exports){
 const React = require('react');
 const {
   useMouseHandler,
@@ -1521,7 +1888,7 @@ const clampToArea = (dragAreaID, pixel, style) => {
   };
 };
 module.exports = DragArea;
-},{"./hooks":33,"bens_utils":42,"react":50}],21:[function(require,module,exports){
+},{"./hooks":36,"bens_utils":45,"react":53}],24:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -1554,7 +1921,7 @@ const Dropdown = function (props) {
   }, optionTags);
 };
 module.exports = Dropdown;
-},{"react":50}],22:[function(require,module,exports){
+},{"react":53}],25:[function(require,module,exports){
 const React = require('react');
 const {
   useEffect,
@@ -1600,7 +1967,7 @@ const usePrevious = value => {
   return ref.current;
 };
 module.exports = Indicator;
-},{"react":50}],23:[function(require,module,exports){
+},{"react":53}],26:[function(require,module,exports){
 const React = require('react');
 const InfoCard = props => {
   const overrideStyle = props.style || {};
@@ -1624,7 +1991,7 @@ const InfoCard = props => {
   }, props.children);
 };
 module.exports = InfoCard;
-},{"react":50}],24:[function(require,module,exports){
+},{"react":53}],27:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Divider = require('./Divider.react');
@@ -1703,7 +2070,7 @@ function Modal(props) {
   }, buttonHTML)));
 }
 module.exports = Modal;
-},{"./Button.react":15,"./Divider.react":19,"react":50}],25:[function(require,module,exports){
+},{"./Button.react":18,"./Divider.react":22,"react":53}],28:[function(require,module,exports){
 const React = require('react');
 const {
   useState,
@@ -1785,7 +2152,7 @@ const submitValue = (onChange, nextVal, onlyInt) => {
   }
 };
 module.exports = NumberField;
-},{"react":50}],26:[function(require,module,exports){
+},{"react":53}],29:[function(require,module,exports){
 function _extends() { _extends = Object.assign ? Object.assign.bind() : function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 /**
  * See ~/Code/teaching/clusters for an example of how to use the plot
@@ -2073,7 +2440,7 @@ const PlotWatcher = props => {
   }));
 };
 module.exports = PlotWatcher;
-},{"./Button.react":15,"./Canvas.react":16,"react":50}],27:[function(require,module,exports){
+},{"./Button.react":18,"./Canvas.react":19,"react":53}],30:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Modal = require('./Modal.react');
@@ -2156,7 +2523,7 @@ const quitGameModal = dispatch => {
   });
 };
 module.exports = QuitButton;
-},{"./Button.react":15,"./Modal.react":24,"bens_utils":42,"react":50}],28:[function(require,module,exports){
+},{"./Button.react":18,"./Modal.react":27,"bens_utils":45,"react":53}],31:[function(require,module,exports){
 const React = require('react');
 
 // props:
@@ -2183,7 +2550,7 @@ class RadioPicker extends React.Component {
   }
 }
 module.exports = RadioPicker;
-},{"react":50}],29:[function(require,module,exports){
+},{"react":53}],32:[function(require,module,exports){
 const React = require('react');
 const NumberField = require('./NumberField.react');
 const {
@@ -2253,7 +2620,7 @@ function Slider(props) {
   }), props.noOriginalValue ? null : "(" + originalValue + ")"));
 }
 module.exports = Slider;
-},{"./NumberField.react":25,"react":50}],30:[function(require,module,exports){
+},{"./NumberField.react":28,"react":53}],33:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -2297,7 +2664,7 @@ const SpriteSheet = props => {
   }));
 };
 module.exports = SpriteSheet;
-},{"react":50}],31:[function(require,module,exports){
+},{"react":53}],34:[function(require,module,exports){
 const React = require('react');
 const Button = require('./Button.react');
 const Dropdown = require('./Dropdown.react');
@@ -2484,7 +2851,7 @@ function Table(props) {
   }, props.hideNumRows ? null : /*#__PURE__*/React.createElement("span", null, "Total Rows: ", rows.length, " Rows Displayed: ", filteredRows.length), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, headers)), /*#__PURE__*/React.createElement("tbody", null, rowHTML)));
 }
 module.exports = Table;
-},{"./Button.react":15,"./Dropdown.react":21,"react":50}],32:[function(require,module,exports){
+},{"./Button.react":18,"./Dropdown.react":24,"react":53}],35:[function(require,module,exports){
 const React = require('react');
 
 /**
@@ -2526,7 +2893,7 @@ const TextField = props => {
   });
 };
 module.exports = TextField;
-},{"react":50}],33:[function(require,module,exports){
+},{"react":53}],36:[function(require,module,exports){
 const React = require('react');
 const {
   throttle
@@ -2865,7 +3232,7 @@ module.exports = {
   useCompare,
   usePrevious
 };
-},{"bens_utils":42,"react":50}],34:[function(require,module,exports){
+},{"bens_utils":45,"react":53}],37:[function(require,module,exports){
 // type Point = {
 //   x: number,
 //   y: number,
@@ -2950,7 +3317,7 @@ const plotReducer = (state, action) => {
 module.exports = {
   plotReducer
 };
-},{}],35:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 
 // const React = require('react');
 // const ReactDOM = require('react-dom');
@@ -2984,7 +3351,7 @@ module.exports = {
 
 
 
-},{"./bin/AudioWidget.react.js":13,"./bin/Board.react.js":14,"./bin/Button.react.js":15,"./bin/Canvas.react.js":16,"./bin/Checkbox.react.js":17,"./bin/CheckerBackground.react.js":18,"./bin/Divider.react.js":19,"./bin/DragArea.react.js":20,"./bin/Dropdown.react.js":21,"./bin/Indicator.react.js":22,"./bin/InfoCard.react.js":23,"./bin/Modal.react.js":24,"./bin/NumberField.react.js":25,"./bin/Plot.react.js":26,"./bin/QuitButton.react.js":27,"./bin/RadioPicker.react.js":28,"./bin/Slider.react.js":29,"./bin/SpriteSheet.react.js":30,"./bin/Table.react.js":31,"./bin/TextField.react.js":32,"./bin/hooks.js":33,"./bin/plotReducer.js":34}],36:[function(require,module,exports){
+},{"./bin/AudioWidget.react.js":16,"./bin/Board.react.js":17,"./bin/Button.react.js":18,"./bin/Canvas.react.js":19,"./bin/Checkbox.react.js":20,"./bin/CheckerBackground.react.js":21,"./bin/Divider.react.js":22,"./bin/DragArea.react.js":23,"./bin/Dropdown.react.js":24,"./bin/Indicator.react.js":25,"./bin/InfoCard.react.js":26,"./bin/Modal.react.js":27,"./bin/NumberField.react.js":28,"./bin/Plot.react.js":29,"./bin/QuitButton.react.js":30,"./bin/RadioPicker.react.js":31,"./bin/Slider.react.js":32,"./bin/SpriteSheet.react.js":33,"./bin/Table.react.js":34,"./bin/TextField.react.js":35,"./bin/hooks.js":36,"./bin/plotReducer.js":37}],39:[function(require,module,exports){
 'use strict';
 
 function _toConsumableArray(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } else { return Array.from(arr); } }
@@ -3148,7 +3515,7 @@ module.exports = {
   getEntityPositions: getEntityPositions,
   entityInsideGrid: entityInsideGrid
 };
-},{"./helpers":37,"./math":38,"./vectors":41}],37:[function(require,module,exports){
+},{"./helpers":40,"./math":41,"./vectors":44}],40:[function(require,module,exports){
 'use strict';
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
@@ -3295,7 +3662,7 @@ module.exports = {
   deepCopy: deepCopy,
   throttle: throttle
 };
-},{"./vectors":41}],38:[function(require,module,exports){
+},{"./vectors":44}],41:[function(require,module,exports){
 "use strict";
 
 var clamp = function clamp(val, min, max) {
@@ -3340,7 +3707,7 @@ module.exports = {
   clamp: clamp,
   subtractWithDeficit: subtractWithDeficit
 };
-},{}],39:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 'use strict';
 
 function isIpad() {
@@ -3371,7 +3738,7 @@ module.exports = {
   isMobile: isMobile,
   isPhone: isPhone
 };
-},{}],40:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 "use strict";
 
 var floor = Math.floor,
@@ -3426,7 +3793,7 @@ module.exports = {
   oneOf: oneOf,
   weightedOneOf: weightedOneOf
 };
-},{}],41:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 "use strict";
 
 var _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; };
@@ -3625,7 +3992,7 @@ module.exports = {
   rotate: rotate,
   abs: abs
 };
-},{}],42:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 
 module.exports = {
   vectors: require('./bin/vectors'),
@@ -3636,7 +4003,7 @@ module.exports = {
   math: require('./bin/math'),
 }
 
-},{"./bin/gridHelpers":36,"./bin/helpers":37,"./bin/math":38,"./bin/platform":39,"./bin/stochastic":40,"./bin/vectors":41}],43:[function(require,module,exports){
+},{"./bin/gridHelpers":39,"./bin/helpers":40,"./bin/math":41,"./bin/platform":42,"./bin/stochastic":43,"./bin/vectors":44}],46:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -3822,7 +4189,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],44:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 (function (process){(function (){
 /**
  * @license React
@@ -8777,7 +9144,7 @@ if(/^(https?|file):$/.test(protocol)){// eslint-disable-next-line react-internal
 console.info('%cDownload the React DevTools '+'for a better development experience: '+'https://reactjs.org/link/react-devtools'+(protocol==='file:'?'\nYou might need to use a local HTTP server (instead of file://): '+'https://reactjs.org/link/react-devtools-faq':''),'font-weight:bold');}}}}exports.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED=Internals;exports.createPortal=createPortal$1;exports.createRoot=createRoot$1;exports.findDOMNode=findDOMNode;exports.flushSync=flushSync$1;exports.hydrate=hydrate;exports.hydrateRoot=hydrateRoot$1;exports.render=render;exports.unmountComponentAtNode=unmountComponentAtNode;exports.unstable_batchedUpdates=batchedUpdates$1;exports.unstable_renderSubtreeIntoContainer=renderSubtreeIntoContainer;exports.version=ReactVersion;/* global __REACT_DEVTOOLS_GLOBAL_HOOK__ */if(typeof __REACT_DEVTOOLS_GLOBAL_HOOK__!=='undefined'&&typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop==='function'){__REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(new Error());}})();}
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":43,"react":50,"scheduler":53}],45:[function(require,module,exports){
+},{"_process":46,"react":53,"scheduler":56}],48:[function(require,module,exports){
 /**
  * @license React
  * react-dom.production.min.js
@@ -9102,7 +9469,7 @@ exports.hydrateRoot=function(a,b,c){if(!ol(a))throw Error(p(405));var d=null!=c&
 e);return new nl(b)};exports.render=function(a,b,c){if(!pl(b))throw Error(p(200));return sl(null,a,b,!1,c)};exports.unmountComponentAtNode=function(a){if(!pl(a))throw Error(p(40));return a._reactRootContainer?(Sk(function(){sl(null,null,a,!1,function(){a._reactRootContainer=null;a[uf]=null})}),!0):!1};exports.unstable_batchedUpdates=Rk;
 exports.unstable_renderSubtreeIntoContainer=function(a,b,c,d){if(!pl(c))throw Error(p(200));if(null==a||void 0===a._reactInternals)throw Error(p(38));return sl(a,b,c,!1,d)};exports.version="18.2.0-next-9e3b772b8-20220608";
 
-},{"react":50,"scheduler":53}],46:[function(require,module,exports){
+},{"react":53,"scheduler":56}],49:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -9131,7 +9498,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":43,"react-dom":47}],47:[function(require,module,exports){
+},{"_process":46,"react-dom":50}],50:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -9173,7 +9540,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/react-dom.development.js":44,"./cjs/react-dom.production.min.js":45,"_process":43}],48:[function(require,module,exports){
+},{"./cjs/react-dom.development.js":47,"./cjs/react-dom.production.min.js":48,"_process":46}],51:[function(require,module,exports){
 (function (process){(function (){
 /**
  * @license React
@@ -11578,7 +11945,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":43}],49:[function(require,module,exports){
+},{"_process":46}],52:[function(require,module,exports){
 /**
  * @license React
  * react.production.min.js
@@ -11606,7 +11973,7 @@ exports.useCallback=function(a,b){return U.current.useCallback(a,b)};exports.use
 exports.useInsertionEffect=function(a,b){return U.current.useInsertionEffect(a,b)};exports.useLayoutEffect=function(a,b){return U.current.useLayoutEffect(a,b)};exports.useMemo=function(a,b){return U.current.useMemo(a,b)};exports.useReducer=function(a,b,e){return U.current.useReducer(a,b,e)};exports.useRef=function(a){return U.current.useRef(a)};exports.useState=function(a){return U.current.useState(a)};exports.useSyncExternalStore=function(a,b,e){return U.current.useSyncExternalStore(a,b,e)};
 exports.useTransition=function(){return U.current.useTransition()};exports.version="18.2.0";
 
-},{}],50:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -11617,7 +11984,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/react.development.js":48,"./cjs/react.production.min.js":49,"_process":43}],51:[function(require,module,exports){
+},{"./cjs/react.development.js":51,"./cjs/react.production.min.js":52,"_process":46}],54:[function(require,module,exports){
 (function (process,setImmediate){(function (){
 /**
  * @license React
@@ -12255,7 +12622,7 @@ if (
 }
 
 }).call(this)}).call(this,require('_process'),require("timers").setImmediate)
-},{"_process":43,"timers":54}],52:[function(require,module,exports){
+},{"_process":46,"timers":57}],55:[function(require,module,exports){
 (function (setImmediate){(function (){
 /**
  * @license React
@@ -12278,7 +12645,7 @@ exports.unstable_scheduleCallback=function(a,b,c){var d=exports.unstable_now();"
 exports.unstable_shouldYield=M;exports.unstable_wrapCallback=function(a){var b=y;return function(){var c=y;y=b;try{return a.apply(this,arguments)}finally{y=c}}};
 
 }).call(this)}).call(this,require("timers").setImmediate)
-},{"timers":54}],53:[function(require,module,exports){
+},{"timers":57}],56:[function(require,module,exports){
 (function (process){(function (){
 'use strict';
 
@@ -12289,7 +12656,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 }).call(this)}).call(this,require('_process'))
-},{"./cjs/scheduler.development.js":51,"./cjs/scheduler.production.min.js":52,"_process":43}],54:[function(require,module,exports){
+},{"./cjs/scheduler.development.js":54,"./cjs/scheduler.production.min.js":55,"_process":46}],57:[function(require,module,exports){
 (function (setImmediate,clearImmediate){(function (){
 var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
@@ -12368,4 +12735,4 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
   delete immediateIds[id];
 };
 }).call(this)}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
-},{"process/browser.js":43,"timers":54}]},{},[7]);
+},{"process/browser.js":46,"timers":57}]},{},[7]);

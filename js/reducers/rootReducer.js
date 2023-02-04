@@ -23,6 +23,7 @@ const rootReducer = (state, action) => {
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
+    case 'DRAW_SQUARE':
     case 'SELECT':
     case 'PASTE':
       state.curAction.push(action);
