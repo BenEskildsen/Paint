@@ -1,22 +1,27 @@
+  - undo/redo
+    - rename actions to transactions
+    - if you undo inside a transaction, undo that, not previously ended one
+    - save bucket fill in txn history which pixels were painted so it can redo faster
+
+  - previews
+    - off by like 5 pixels in top and left
 
   - resizing screen
     - fails with bucket tool
     - makes checkerboard background alias
     - occasionally draws double
 
-  - bucket tool:
-    - save in action history which pixels were painted so it can redo faster
   - select
-    - dragArea w/dragable canvas of selection(s)
-    - drag handles to resize dragables
+    - implicitly cut on initial selection (needs to be undoable)
     - switching tools commits selections back to regular canvas
-  - implement the rest of the tools
-    - square
-      - preview square
+    - drag handles to resize dragables
+    - pasted images should be selected automatically
+
+  - implement tools:
+    - text
   - implement per-tool settings
     - square filled vs not (+ secondary color fill + border)
     - cut/copy
   - more colors
     - implement secondary color on right click
-  - import/export images
 

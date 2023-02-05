@@ -19,7 +19,8 @@ const initState = () => {
     thickness: 4,
     square: null, // square that's being currently drawn
     squareType: 'Filled',
-    fuzzFactor: 0,
+    selection: null, // a square + imageData
+    fuzzFactor: 0, // for bucket fill
     secondaryColor: 'white',
 
     mouse: undefined, // will get defined by mouseReducer

@@ -11,10 +11,7 @@ async function render(state) {
 
   const {width, height} = getTrueCanvasDims(state);
 
-  ctx.save();
-  const pxW = width / canvasDims.width;
-  const pxH = height / canvasDims.height;
-  ctx.scale(pxW, pxH);
+  doContextScaling(state, ctx);
   ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
   ctx.restore();
 
@@ -36,13 +33,7 @@ const renderAction = (state, action, resolve) => {
   const {ctx, canvasDims, windowDims} = state;
   if (!ctx) return;
 
-  ctx.save();
-  const {width, height} = getTrueCanvasDims(state);
-  const pxW = width / canvasDims.width;
-  const pxH = height / canvasDims.height;
-  ctx.imageSmoothingEnabled = false;
-  ctx.scale(pxW, pxH);
-  ctx.translate(0.5, 0.5);
+  doContextScaling(state, ctx);
 
   switch (action.type) {
     case 'STROKE': {
@@ -116,23 +107,31 @@ const renderAction = (state, action, resolve) => {
       break;
     }
     case 'DRAW_SQUARE': {
-      const {square, squareType, thickness, color} = action;
-      ctx.lineWidth = thickness || ctx.lineWidth;
-      ctx.fillStyle = color;
-      ctx.strokeStyle = color;
-      if (squareType == 'Filled') {
-        ctx.fillRect(square.x, square.y, square.width, square.height);
-      } else if (squareType == 'Empty') {
-        ctx.beginPath();
-        ctx.rect(square.x, square.y, square.width, square.height);
-        ctx.closePath();
-        ctx.stroke();
-      }
+      drawSquare(ctx, action);
       ctx.restore(); // NOTE: this has to be here for promise to work
       if (resolve) resolve();
       break;
     }
+    case 'COMMIT_SELECTION': {
+      ctx.putImageData(action.imageData, action.x, action.y);
+      ctx.restore();
+      if (resolve) resolve();
+      break;
+    }
   }
+}
+
+
+// must be paired with a ctx.restore() afterwards!
+const doContextScaling = (state, ctx) => {
+  const {canvasDims, windowDims} = state;
+  ctx.save();
+  const {width, height} = getTrueCanvasDims(state);
+  const pxW = width / canvasDims.width;
+  const pxH = height / canvasDims.height;
+  ctx.imageSmoothingEnabled = false;
+  ctx.scale(pxW, pxH);
+  ctx.translate(0.5, 0.5);
 }
 
 const posToStr = (pos) =>{
@@ -151,7 +150,26 @@ const setPixelColor = (imageData, canvasDims, pos, color) => {
   }
 }
 
+const drawSquare = (ctx, action) => {
+  const {square, squareType, thickness, color, isDashed} = action;
+  ctx.lineWidth = thickness || ctx.lineWidth;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  if (isDashed) {
+    ctx.setLineDash([5, 5]);
+  }
+  if (squareType == 'Filled') {
+    ctx.fillRect(square.x, square.y, square.width, square.height);
+  } else if (squareType == 'Empty') {
+    ctx.beginPath();
+    ctx.rect(square.x, square.y, square.width, square.height);
+    ctx.closePath();
+    ctx.stroke();
+  }
+};
+
 
 module.exports = {
   render, renderAction, setPixelColor,
+  drawSquare, doContextScaling,
 };

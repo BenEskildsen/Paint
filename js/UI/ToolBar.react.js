@@ -89,99 +89,124 @@ const ToolParameters = (props) => {
   const {state, dispatch} = props;
 
   let content = null;
-  if (state.tool == 'PIPETTE') {
-    let color = {r: 0, g: 0, b: 0, a: 0};
-    if (state.colorPreview) {
-      color = rgbaToColor(state.colorPreview);
-    }
-    content = (
-      <div>
-        <div
-          style={{
-            backgroundColor: state.colorPreview,
-            width: 50,
-            height: 50,
-            margin: 'auto',
-            marginTop: 5,
-          }}
-        />
-        <div>{colorToHex(color)}</div>
-        <div
-          style={{
-            fontSize: 10,
-          }}
-        >{colorToRGBA(color)}</div>
-      </div>
-    );
-  } else if(state.tool == 'BUCKET') {
-    let color = {r: 0, g: 0, b: 0, a: 0};
-    if (state.colorPreview) {
-      color = rgbaToColor(state.colorPreview);
-    }
-    content = (
-      <div>
-        <div
-          style={{
-            backgroundColor: state.colorPreview,
-            width: 50,
-            height: 50,
-            margin: 'auto',
-            marginTop: 5,
-          }}
-        />
-        <div>{colorToHex(color)}</div>
-        <div
-          style={{
-            fontSize: 10,
-          }}
-        >{colorToRGBA(color)}</div>
+  switch (state.tool) {
+    case 'PIPETTE': {
+      let color = {r: 0, g: 0, b: 0, a: 0};
+      if (state.colorPreview) {
+        color = rgbaToColor(state.colorPreview);
+      }
+      content = (
         <div>
-          <div>Fuzz Factor</div>
+          <div
+            style={{
+              backgroundColor: state.colorPreview,
+              width: 50,
+              height: 50,
+              margin: 'auto',
+              marginTop: 5,
+            }}
+          />
+          <div>{colorToHex(color)}</div>
+          <div
+            style={{
+              fontSize: 10,
+            }}
+          >{colorToRGBA(color)}</div>
+        </div>
+      );
+      break;
+    }
+    case 'BUCKET': {
+      let color = {r: 0, g: 0, b: 0, a: 0};
+      if (state.colorPreview) {
+        color = rgbaToColor(state.colorPreview);
+      }
+      content = (
+        <div>
+          <div
+            style={{
+              backgroundColor: state.colorPreview,
+              width: 50,
+              height: 50,
+              margin: 'auto',
+              marginTop: 5,
+            }}
+          />
+          <div>{colorToHex(color)}</div>
+          <div
+            style={{
+              fontSize: 10,
+            }}
+          >{colorToRGBA(color)}</div>
+          <div>
+            <div>Fuzz Factor</div>
+            <Slider
+              min={0} max={255}
+              value={state.fuzzFactor}
+              onChange={(fuzzFactor) => dispatch({fuzzFactor})}
+            />
+          </div>
+        </div>
+      );
+      break;
+    }
+    case 'ERASER':
+    case 'PEN':
+      content = (
+        <div>
+          <div>Stroke Thickness</div>
           <Slider
-            min={0} max={255}
-            value={state.fuzzFactor}
-            onChange={(fuzzFactor) => dispatch({fuzzFactor})}
+            min={1} max={20}
+            value={state.thickness}
+            onChange={(thickness) => dispatch({thickness})}
           />
         </div>
-      </div>
-    );
+      );
+      break;
+    case 'SQUARE': {
+      const thickness = (
+        <div>
+          <div>Border Thickness</div>
+          <Slider
+            min={1} max={20}
+            value={state.thickness}
+            onChange={(thickness) => dispatch({thickness})}
+          />
+        </div>
+      );
+      content = (
+        <div
+          style={{
+            marginBottom: 10,
+          }}
+        >
+          <RadioPicker
+            options={["Filled", "Empty"]}
+            selected={state.squareType}
+            onChange={(squareType) => dispatch({squareType})}
+          />
+          {state.squareType == 'Empty' ? thickness : null}
+        </div>
+      );
+      break;
+    }
+    case 'SELECT': {
+      content = (
+        <div
+          style={{
 
-  } else if (state.tool == 'ERASER' || state.tool == 'PEN') {
-    content = (
-      <div>
-        <div>Stroke Thickness</div>
-        <Slider
-          min={1} max={20}
-          value={state.thickness}
-          onChange={(thickness) => dispatch({thickness})}
-        />
-      </div>
-    );
-  } else if (state.tool = 'SQUARE') {
-    const thickness = (
-      <div>
-        <div>Border Thickness</div>
-        <Slider
-          min={1} max={20}
-          value={state.thickness}
-          onChange={(thickness) => dispatch({thickness})}
-        />
-      </div>
-    );
-    content = (
-      <div
-        style={{
-          marginBottom: 10,
-        }}
-      >
-        <RadioPicker
-          options={["Filled", "Empty"]}
-          selected={state.squareType}
-          onChange={(squareType) => dispatch({squareType})}
-        />
-        {state.squareType == 'Empty' ? thickness : null}
-      </div>
-    );
+          }}
+        >
+          <Button
+            label="Commit Selection"
+            onClick={() => {
+              dispatch({type: 'COMMIT_SELECTION', ...state.selection});
+              dispatch({type: 'END_ACTION'});
+            }}
+          />
+        </div>
+      );
+    }
   }
 
   return (

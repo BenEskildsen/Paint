@@ -24,7 +24,7 @@ const rootReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
-    case 'SELECT':
+    case 'COMMIT_SELECTION':
     case 'PASTE':
       state.curAction.push(action);
       return toolReducer(state, action);

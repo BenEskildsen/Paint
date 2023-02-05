@@ -2,7 +2,7 @@ const React = require('react');
 const {
   Button, Modal,
   Canvas, RadioPicker,
-  CheckerBackground,
+  CheckerBackground, DragArea,
 } = require('bens_ui_components');
 const {
   useEnhancedReducer, useResponsiveDimensions,
@@ -11,6 +11,7 @@ const {
 const {
   getColorAtPixel, colorToHex, colorToRGBA, stringToColor,
 } = require('../selectors/colors');
+const {drawSquare, doContextScaling} = require('../render');
 const {getNeighbors, insideCanvas} = require('../selectors/pixels');
 const {getTrueCanvasDims} = require('../selectors/canvas');
 const {config} = require('../config');
@@ -31,69 +32,108 @@ const PaintArea = (props) => {
   };
   const {width, height} = getTrueCanvasDims(state);
 
+  // Mouse handling
   useMouseHandler(
     "canvas", {dispatch, getState},
     {
       leftDown: (state, dispatch, pos) => {
-        if (state.tool == 'PIPETTE') {
-          dispatch({color: colorToRGBA(getColorAtPixel(state.ctx, pos))});
-        } else if (state.tool == 'SQUARE') {
-          dispatch({square: {...pos}});
-        } else {
-          dispatch({type: 'START_ACTION'});
+        switch (state.tool) {
+          case 'PIPETTE':
+            dispatch({color: colorToRGBA(getColorAtPixel(state.ctx, pos))});
+            break;
+          case 'SQUARE':
+            dispatch({square: {...pos}});
+            break;
+          case 'SELECT':
+            if (state.selection == null) {
+              dispatch({square: {...pos}});
+            }
+            break;
+          default:
+            dispatch({type: 'START_ACTION'});
+            break;
         }
       },
       mouseMove: (state, dispatch, pos) => {
-        if (state?.tool == 'PEN' || state?.tool == 'ERASER') {
-          if (!state?.mouse?.isLeftDown) return;
-          dispatch({inMove: true});
-
-          const {width, height} = getTrueCanvasDims(state);
-          const {canvasDims} = state;
-          if (state.prevInteractPos) {
-            const prevPos = state.prevInteractPos;
-            dispatch({type: toolToVerb[state.tool],
-              start: {x: prevPos.x * canvasDims.width / width, y: prevPos.y * canvasDims.height / height},
-              end: {x: pos.x * canvasDims.width / width, y: pos.y * canvasDims.height / height},
-              color: state.color,
-              thickness: state.thickness,
-            });
+        switch (state.tool) {
+          case 'ERASER':
+          case 'PEN': {
+            if (!state?.mouse?.isLeftDown) return;
+            const {width, height} = getTrueCanvasDims(state);
+            const {canvasDims} = state;
+            if (state.prevInteractPos) {
+              const prevPos = state.prevInteractPos;
+              dispatch({type: toolToVerb[state.tool],
+                start: {
+                  x: prevPos.x * canvasDims.width / width,
+                  y: prevPos.y * canvasDims.height / height,
+                },
+                end: {x: pos.x * canvasDims.width / width, y: pos.y * canvasDims.height / height},
+                color: state.color,
+                thickness: state.thickness,
+              });
+            }
             dispatch({prevInteractPos: pos});
-          } else {
-            dispatch({prevInteractPos: pos});
+            break;
           }
-        } else if (state.tool == 'PIPETTE' || state.tool == 'BUCKET') {
-          dispatch({colorPreview: colorToRGBA(getColorAtPixel(state.ctx, pos))});
-        } else if (state.tool == 'SQUARE') {
-          if (!state?.mouse?.isLeftDown) return;
-          dispatch({square: {...state.square,
-            width: pos.x - state.square.x,
-            height: pos.y - state.square.y,
-          }});
+          case 'PIPETTE':
+          case 'BUCKET':
+            dispatch({colorPreview: colorToRGBA(getColorAtPixel(state.ctx, pos))});
+            break;
+          case 'SQUARE':
+            if (!state?.mouse?.isLeftDown) return;
+            dispatch({square: {...state.square,
+              width: pos.x - state.square.x,
+              height: pos.y - state.square.y,
+            }});
+            break;
+          case 'SELECT':
+            if (!state?.mouse?.isLeftDown) return;
+            if (state.selection != null) return;
+            dispatch({square: {...state.square,
+              width: pos.x - state.square.x,
+              height: pos.y - state.square.y,
+            }});
+            break;
         }
       },
       leftUp: (state, dispatch, pos) => {
-        if (state.tool == 'BUCKET') {
-          dispatch({type: 'START_ACTION'});
-          dispatch({type: 'FILL',
-            position: {x: Math.round(pos.x), y: Math.round(pos.y)},
-            color: state.color,
-            fuzzFactor: state.fuzzFactor,
-          });
-          dispatch({type: 'END_ACTION'});
-        } else if (state.tool == 'SQUARE') {
-          dispatch({type: 'START_ACTION'});
-          dispatch({type: 'DRAW_SQUARE',
-            thickness: state.thickness, squareType: state.squareType, color: state.color,
-            square: {...state.square},
-          });
-          dispatch({type: 'END_ACTION'});
-        } else {
-          dispatch({type: 'END_ACTION'});
-          dispatch({inMove: false});
-          dispatch({prevInteractPos: null});
+        switch (state.tool) {
+          case 'BUCKET':
+            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'FILL',
+              position: {x: Math.round(pos.x), y: Math.round(pos.y)},
+              color: state.color,
+              fuzzFactor: state.fuzzFactor,
+            });
+            dispatch({type: 'END_ACTION'});
+            break;
+          case 'SQUARE':
+            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'DRAW_SQUARE',
+              thickness: state.thickness, squareType: state.squareType, color: state.color,
+              square: {...state.square},
+            });
+            dispatch({square: null});
+            dispatch({type: 'END_ACTION'});
+            break;
+          case 'SELECT':
+            dispatch({type: 'START_ACTION'});
+            dispatch({selection: {
+              ...state.square,
+              imageData: state.ctx.getImageData(
+                state.square.x, state.square.y, state.square.width, state.square.height,
+              ),
+            }});
+            dispatch({square: null});
+            break;
+          default: {
+            dispatch({type: 'END_ACTION'});
+            dispatch({prevInteractPos: null});
+            break;
+          }
         }
-      },
+      }
     },
   );
 
@@ -121,19 +161,92 @@ const PaintArea = (props) => {
     }, false);
   }, []);
 
+  // preview
+  let previewCanvas = null;
+  if (state.square != null) {
+    previewCanvas = (
+      <Canvas
+        id="previewCanvas"
+        style={{
+          zIndex: 3,
+          position: 'absolute',
+          top: 0, left: 0,
+          pointerEvents: 'none',
+        }}
+        width={width}
+        height={height}
+      />
+    );
+  }
+  useEffect(() => {
+    if (state.square == null) return;
+    const canvas = document.getElementById("previewCanvas");
+    if (canvas == null) return;
+    const ctx = canvas.getContext("2d");
+    doContextScaling(state, ctx);
+    ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
+    const color = state.tool == 'SQUARE' ? state.color : 'black';
+    const thickness = state.tool == 'SQUARE' ? state.thickness : 1;
+    drawSquare(ctx, {
+      square: state.square, thickness, color,
+      squareType: 'Empty', isDashed: state.tool == 'SELECT',
+    });
+    ctx.restore();
+  }, [state.square]);
+
+  // selection
+  let selectionArea = null;
+  if (state.selection != null) {
+    selectionArea = (
+      <DragArea
+        style={{
+          width, height,
+          zIndex: 3,
+          top: 0, left: 0,
+          position: 'absolute',
+        }}
+        onDrop={(id, position) => {
+          dispatch({selection: {...state.selection, ...position}});
+        }}
+      >
+        {[(<div // HACK: needs to be part of an array for props.children.map in DragArea
+          id="selection"
+          key="selection"
+          style={{
+            position: 'absolute',
+            top: state.selection.y, left: state.selection.x,
+            width: state.selection.width, height: state.selection.height,
+            border: '2px dashed black',
+          }}
+        >
+          <Canvas
+            id="selectionCanvas"
+            width={state.selection.width} height={state.selection.height}
+          />
+        </div>)]}
+      </DragArea>
+    );
+  }
+  useEffect(() => {
+    if (state.selection == null) return;
+    const canvas = document.getElementById("selectionCanvas");
+    if (canvas == null) return;
+    const ctx = canvas.getContext("2d");
+    ctx.putImageData(state.selection.imageData, 0, 0);
+  }, [state.selection]);
+
   return (
     <div
       style={{
         width: paintAreaDims.width,
         height: '100%',
         backgroundColor: 'lightgray',
+        position: 'relative',
       }}
     >
       <CheckerBackground
         style={{
           position: 'absolute',
-          top: 0,
-          left: config.toolBarWidth,
           zIndex: 1,
           opacity: 0.5,
         }}
@@ -145,12 +258,14 @@ const PaintArea = (props) => {
       <Canvas
         style={{
           zIndex: 2,
-          position: 'fixed',
+          position: 'absolute',
+          top: 0, left: 0,
         }}
         width={width}
         height={height}
       />
-
+      {previewCanvas}
+      {selectionArea}
     </div>
   );
 };

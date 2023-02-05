@@ -197,7 +197,8 @@ const {
   Modal,
   Canvas,
   RadioPicker,
-  CheckerBackground
+  CheckerBackground,
+  DragArea
 } = require('bens_ui_components');
 const {
   useEnhancedReducer,
@@ -211,6 +212,10 @@ const {
   colorToRGBA,
   stringToColor
 } = require('../selectors/colors');
+const {
+  drawSquare,
+  doContextScaling
+} = require('../render');
 const {
   getNeighbors,
   insideCanvas
@@ -248,123 +253,170 @@ const PaintArea = props => {
     width,
     height
   } = getTrueCanvasDims(state);
+
+  // Mouse handling
   useMouseHandler("canvas", {
     dispatch,
     getState
   }, {
     leftDown: (state, dispatch, pos) => {
-      if (state.tool == 'PIPETTE') {
-        dispatch({
-          color: colorToRGBA(getColorAtPixel(state.ctx, pos))
-        });
-      } else if (state.tool == 'SQUARE') {
-        dispatch({
-          square: {
-            ...pos
+      switch (state.tool) {
+        case 'PIPETTE':
+          dispatch({
+            color: colorToRGBA(getColorAtPixel(state.ctx, pos))
+          });
+          break;
+        case 'SQUARE':
+          dispatch({
+            square: {
+              ...pos
+            }
+          });
+          break;
+        case 'SELECT':
+          if (state.selection == null) {
+            dispatch({
+              square: {
+                ...pos
+              }
+            });
           }
-        });
-      } else {
-        dispatch({
-          type: 'START_ACTION'
-        });
+          break;
+        default:
+          dispatch({
+            type: 'START_ACTION'
+          });
+          break;
       }
     },
     mouseMove: (state, dispatch, pos) => {
-      if ((state === null || state === void 0 ? void 0 : state.tool) == 'PEN' || (state === null || state === void 0 ? void 0 : state.tool) == 'ERASER') {
-        var _state$mouse;
-        if (!(state !== null && state !== void 0 && (_state$mouse = state.mouse) !== null && _state$mouse !== void 0 && _state$mouse.isLeftDown)) return;
-        dispatch({
-          inMove: true
-        });
-        const {
-          width,
-          height
-        } = getTrueCanvasDims(state);
-        const {
-          canvasDims
-        } = state;
-        if (state.prevInteractPos) {
-          const prevPos = state.prevInteractPos;
-          dispatch({
-            type: toolToVerb[state.tool],
-            start: {
-              x: prevPos.x * canvasDims.width / width,
-              y: prevPos.y * canvasDims.height / height
-            },
-            end: {
-              x: pos.x * canvasDims.width / width,
-              y: pos.y * canvasDims.height / height
-            },
-            color: state.color,
-            thickness: state.thickness
-          });
-          dispatch({
-            prevInteractPos: pos
-          });
-        } else {
-          dispatch({
-            prevInteractPos: pos
-          });
-        }
-      } else if (state.tool == 'PIPETTE' || state.tool == 'BUCKET') {
-        dispatch({
-          colorPreview: colorToRGBA(getColorAtPixel(state.ctx, pos))
-        });
-      } else if (state.tool == 'SQUARE') {
-        var _state$mouse2;
-        if (!(state !== null && state !== void 0 && (_state$mouse2 = state.mouse) !== null && _state$mouse2 !== void 0 && _state$mouse2.isLeftDown)) return;
-        dispatch({
-          square: {
-            ...state.square,
-            width: pos.x - state.square.x,
-            height: pos.y - state.square.y
+      var _state$mouse2, _state$mouse3;
+      switch (state.tool) {
+        case 'ERASER':
+        case 'PEN':
+          {
+            var _state$mouse;
+            if (!(state !== null && state !== void 0 && (_state$mouse = state.mouse) !== null && _state$mouse !== void 0 && _state$mouse.isLeftDown)) return;
+            const {
+              width,
+              height
+            } = getTrueCanvasDims(state);
+            const {
+              canvasDims
+            } = state;
+            if (state.prevInteractPos) {
+              const prevPos = state.prevInteractPos;
+              dispatch({
+                type: toolToVerb[state.tool],
+                start: {
+                  x: prevPos.x * canvasDims.width / width,
+                  y: prevPos.y * canvasDims.height / height
+                },
+                end: {
+                  x: pos.x * canvasDims.width / width,
+                  y: pos.y * canvasDims.height / height
+                },
+                color: state.color,
+                thickness: state.thickness
+              });
+            }
+            dispatch({
+              prevInteractPos: pos
+            });
+            break;
           }
-        });
+        case 'PIPETTE':
+        case 'BUCKET':
+          dispatch({
+            colorPreview: colorToRGBA(getColorAtPixel(state.ctx, pos))
+          });
+          break;
+        case 'SQUARE':
+          if (!(state !== null && state !== void 0 && (_state$mouse2 = state.mouse) !== null && _state$mouse2 !== void 0 && _state$mouse2.isLeftDown)) return;
+          dispatch({
+            square: {
+              ...state.square,
+              width: pos.x - state.square.x,
+              height: pos.y - state.square.y
+            }
+          });
+          break;
+        case 'SELECT':
+          if (!(state !== null && state !== void 0 && (_state$mouse3 = state.mouse) !== null && _state$mouse3 !== void 0 && _state$mouse3.isLeftDown)) return;
+          if (state.selection != null) return;
+          dispatch({
+            square: {
+              ...state.square,
+              width: pos.x - state.square.x,
+              height: pos.y - state.square.y
+            }
+          });
+          break;
       }
     },
     leftUp: (state, dispatch, pos) => {
-      if (state.tool == 'BUCKET') {
-        dispatch({
-          type: 'START_ACTION'
-        });
-        dispatch({
-          type: 'FILL',
-          position: {
-            x: Math.round(pos.x),
-            y: Math.round(pos.y)
-          },
-          color: state.color,
-          fuzzFactor: state.fuzzFactor
-        });
-        dispatch({
-          type: 'END_ACTION'
-        });
-      } else if (state.tool == 'SQUARE') {
-        dispatch({
-          type: 'START_ACTION'
-        });
-        dispatch({
-          type: 'DRAW_SQUARE',
-          thickness: state.thickness,
-          squareType: state.squareType,
-          color: state.color,
-          square: {
-            ...state.square
+      switch (state.tool) {
+        case 'BUCKET':
+          dispatch({
+            type: 'START_ACTION'
+          });
+          dispatch({
+            type: 'FILL',
+            position: {
+              x: Math.round(pos.x),
+              y: Math.round(pos.y)
+            },
+            color: state.color,
+            fuzzFactor: state.fuzzFactor
+          });
+          dispatch({
+            type: 'END_ACTION'
+          });
+          break;
+        case 'SQUARE':
+          dispatch({
+            type: 'START_ACTION'
+          });
+          dispatch({
+            type: 'DRAW_SQUARE',
+            thickness: state.thickness,
+            squareType: state.squareType,
+            color: state.color,
+            square: {
+              ...state.square
+            }
+          });
+          dispatch({
+            square: null
+          });
+          dispatch({
+            type: 'END_ACTION'
+          });
+          break;
+        case 'SELECT':
+          dispatch({
+            type: 'START_ACTION'
+          });
+          dispatch({
+            selection: {
+              ...state.square,
+              imageData: state.ctx.getImageData(state.square.x, state.square.y, state.square.width, state.square.height)
+            }
+          });
+          dispatch({
+            square: null
+          });
+          break;
+        default:
+          {
+            dispatch({
+              type: 'END_ACTION'
+            });
+            dispatch({
+              prevInteractPos: null
+            });
+            break;
           }
-        });
-        dispatch({
-          type: 'END_ACTION'
-        });
-      } else {
-        dispatch({
-          type: 'END_ACTION'
-        });
-        dispatch({
-          inMove: false
-        });
-        dispatch({
-          prevInteractPos: null
-        });
       }
     }
   });
@@ -398,17 +450,97 @@ const PaintArea = props => {
       ev.preventDefault();
     }, false);
   }, []);
+
+  // preview
+  let previewCanvas = null;
+  if (state.square != null) {
+    previewCanvas = /*#__PURE__*/React.createElement(Canvas, {
+      id: "previewCanvas",
+      style: {
+        zIndex: 3,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        pointerEvents: 'none'
+      },
+      width: width,
+      height: height
+    });
+  }
+  useEffect(() => {
+    if (state.square == null) return;
+    const canvas = document.getElementById("previewCanvas");
+    if (canvas == null) return;
+    const ctx = canvas.getContext("2d");
+    doContextScaling(state, ctx);
+    ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
+    const color = state.tool == 'SQUARE' ? state.color : 'black';
+    const thickness = state.tool == 'SQUARE' ? state.thickness : 1;
+    drawSquare(ctx, {
+      square: state.square,
+      thickness,
+      color,
+      squareType: 'Empty',
+      isDashed: state.tool == 'SELECT'
+    });
+    ctx.restore();
+  }, [state.square]);
+
+  // selection
+  let selectionArea = null;
+  if (state.selection != null) {
+    selectionArea = /*#__PURE__*/React.createElement(DragArea, {
+      style: {
+        width,
+        height,
+        zIndex: 3,
+        top: 0,
+        left: 0,
+        position: 'absolute'
+      },
+      onDrop: (id, position) => {
+        dispatch({
+          selection: {
+            ...state.selection,
+            ...position
+          }
+        });
+      }
+    }, [/*#__PURE__*/React.createElement("div", {
+      // HACK: needs to be part of an array for props.children.map in DragArea
+      id: "selection",
+      key: "selection",
+      style: {
+        position: 'absolute',
+        top: state.selection.y,
+        left: state.selection.x,
+        width: state.selection.width,
+        height: state.selection.height,
+        border: '2px dashed black'
+      }
+    }, /*#__PURE__*/React.createElement(Canvas, {
+      id: "selectionCanvas",
+      width: state.selection.width,
+      height: state.selection.height
+    }))]);
+  }
+  useEffect(() => {
+    if (state.selection == null) return;
+    const canvas = document.getElementById("selectionCanvas");
+    if (canvas == null) return;
+    const ctx = canvas.getContext("2d");
+    ctx.putImageData(state.selection.imageData, 0, 0);
+  }, [state.selection]);
   return /*#__PURE__*/React.createElement("div", {
     style: {
       width: paintAreaDims.width,
       height: '100%',
-      backgroundColor: 'lightgray'
+      backgroundColor: 'lightgray',
+      position: 'relative'
     }
   }, /*#__PURE__*/React.createElement(CheckerBackground, {
     style: {
       position: 'absolute',
-      top: 0,
-      left: config.toolBarWidth,
       zIndex: 1,
       opacity: 0.5
     },
@@ -425,14 +557,16 @@ const PaintArea = props => {
   }), /*#__PURE__*/React.createElement(Canvas, {
     style: {
       zIndex: 2,
-      position: 'fixed'
+      position: 'absolute',
+      top: 0,
+      left: 0
     },
     width: width,
     height: height
-  }));
+  }), previewCanvas, selectionArea);
 };
 module.exports = PaintArea;
-},{"../config":6,"../selectors/canvas":12,"../selectors/colors":13,"../selectors/pixels":14,"bens_ui_components":38,"react":53}],4:[function(require,module,exports){
+},{"../config":6,"../render":11,"../selectors/canvas":12,"../selectors/colors":13,"../selectors/pixels":14,"bens_ui_components":38,"react":53}],4:[function(require,module,exports){
 const React = require('react');
 const {
   Modal,
@@ -456,6 +590,19 @@ const SettingsModal = props => {
   } = props;
   const [width, setWidth] = useState(state.canvasDims.width);
   const [height, setHeight] = useState(state.canvasDims.height);
+
+  // download
+  function downloadClick() {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    const dt = canvas.toDataURL('image/png');
+    this.href = dt;
+  }
+  useEffect(() => {
+    const download = document.getElementById('download');
+    if (!download) return;
+    download.addEventListener('click', downloadClick, false);
+  }, []);
   return /*#__PURE__*/React.createElement(Modal, {
     style: {},
     title: "Settings",
@@ -486,7 +633,10 @@ const SettingsModal = props => {
           type: 'DISMISS_MODAL'
         });
       }
-    })),
+    }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("a", {
+      id: "download",
+      download: "canvas.png"
+    }, "Download as png"))),
     buttons: [{
       label: 'Save Settings',
       onClick: () => {
@@ -607,88 +757,117 @@ const ToolParameters = props => {
     dispatch
   } = props;
   let content = null;
-  if (state.tool == 'PIPETTE') {
-    let color = {
-      r: 0,
-      g: 0,
-      b: 0,
-      a: 0
-    };
-    if (state.colorPreview) {
-      color = rgbaToColor(state.colorPreview);
-    }
-    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      style: {
-        backgroundColor: state.colorPreview,
-        width: 50,
-        height: 50,
-        margin: 'auto',
-        marginTop: 5
+  switch (state.tool) {
+    case 'PIPETTE':
+      {
+        let color = {
+          r: 0,
+          g: 0,
+          b: 0,
+          a: 0
+        };
+        if (state.colorPreview) {
+          color = rgbaToColor(state.colorPreview);
+        }
+        content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+          style: {
+            backgroundColor: state.colorPreview,
+            width: 50,
+            height: 50,
+            margin: 'auto',
+            marginTop: 5
+          }
+        }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 10
+          }
+        }, colorToRGBA(color)));
+        break;
       }
-    }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 10
+    case 'BUCKET':
+      {
+        let color = {
+          r: 0,
+          g: 0,
+          b: 0,
+          a: 0
+        };
+        if (state.colorPreview) {
+          color = rgbaToColor(state.colorPreview);
+        }
+        content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+          style: {
+            backgroundColor: state.colorPreview,
+            width: 50,
+            height: 50,
+            margin: 'auto',
+            marginTop: 5
+          }
+        }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 10
+          }
+        }, colorToRGBA(color)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Fuzz Factor"), /*#__PURE__*/React.createElement(Slider, {
+          min: 0,
+          max: 255,
+          value: state.fuzzFactor,
+          onChange: fuzzFactor => dispatch({
+            fuzzFactor
+          })
+        })));
+        break;
       }
-    }, colorToRGBA(color)));
-  } else if (state.tool == 'BUCKET') {
-    let color = {
-      r: 0,
-      g: 0,
-      b: 0,
-      a: 0
-    };
-    if (state.colorPreview) {
-      color = rgbaToColor(state.colorPreview);
-    }
-    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-      style: {
-        backgroundColor: state.colorPreview,
-        width: 50,
-        height: 50,
-        margin: 'auto',
-        marginTop: 5
+    case 'ERASER':
+    case 'PEN':
+      content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Stroke Thickness"), /*#__PURE__*/React.createElement(Slider, {
+        min: 1,
+        max: 20,
+        value: state.thickness,
+        onChange: thickness => dispatch({
+          thickness
+        })
+      }));
+      break;
+    case 'SQUARE':
+      {
+        const thickness = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Border Thickness"), /*#__PURE__*/React.createElement(Slider, {
+          min: 1,
+          max: 20,
+          value: state.thickness,
+          onChange: thickness => dispatch({
+            thickness
+          })
+        }));
+        content = /*#__PURE__*/React.createElement("div", {
+          style: {
+            marginBottom: 10
+          }
+        }, /*#__PURE__*/React.createElement(RadioPicker, {
+          options: ["Filled", "Empty"],
+          selected: state.squareType,
+          onChange: squareType => dispatch({
+            squareType
+          })
+        }), state.squareType == 'Empty' ? thickness : null);
+        break;
       }
-    }), /*#__PURE__*/React.createElement("div", null, colorToHex(color)), /*#__PURE__*/React.createElement("div", {
-      style: {
-        fontSize: 10
+    case 'SELECT':
+      {
+        content = /*#__PURE__*/React.createElement("div", {
+          style: {}
+        }, /*#__PURE__*/React.createElement(Button, {
+          label: "Commit Selection",
+          onClick: () => {
+            dispatch({
+              type: 'COMMIT_SELECTION',
+              ...state.selection
+            });
+            dispatch({
+              type: 'END_ACTION'
+            });
+          }
+        }));
       }
-    }, colorToRGBA(color)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Fuzz Factor"), /*#__PURE__*/React.createElement(Slider, {
-      min: 0,
-      max: 255,
-      value: state.fuzzFactor,
-      onChange: fuzzFactor => dispatch({
-        fuzzFactor
-      })
-    })));
-  } else if (state.tool == 'ERASER' || state.tool == 'PEN') {
-    content = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Stroke Thickness"), /*#__PURE__*/React.createElement(Slider, {
-      min: 1,
-      max: 20,
-      value: state.thickness,
-      onChange: thickness => dispatch({
-        thickness
-      })
-    }));
-  } else if (state.tool = 'SQUARE') {
-    const thickness = /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "Border Thickness"), /*#__PURE__*/React.createElement(Slider, {
-      min: 1,
-      max: 20,
-      value: state.thickness,
-      onChange: thickness => dispatch({
-        thickness
-      })
-    }));
-    content = /*#__PURE__*/React.createElement("div", {
-      style: {
-        marginBottom: 10
-      }
-    }, /*#__PURE__*/React.createElement(RadioPicker, {
-      options: ["Filled", "Empty"],
-      selected: state.squareType,
-      onChange: squareType => dispatch({
-        squareType
-      })
-    }), state.squareType == 'Empty' ? thickness : null);
   }
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -793,7 +972,7 @@ const rootReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
-    case 'SELECT':
+    case 'COMMIT_SELECTION':
     case 'PASTE':
       state.curAction.push(action);
       return toolReducer(state, action);
@@ -859,11 +1038,13 @@ const {
 } = require('../render');
 const toolReducer = (state, action) => {
   switch (action.type) {
+    case 'COMMIT_SELECTION':
+      state.selection = null;
+    // fall-through
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
-    case 'SELECT':
     case 'PASTE':
       renderAction(state, action);
       return {
@@ -902,10 +1083,7 @@ async function render(state) {
     width,
     height
   } = getTrueCanvasDims(state);
-  ctx.save();
-  const pxW = width / canvasDims.width;
-  const pxH = height / canvasDims.height;
-  ctx.scale(pxW, pxH);
+  doContextScaling(state, ctx);
   ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
   ctx.restore();
   for (const actionList of state.actions) {
@@ -926,16 +1104,7 @@ const renderAction = (state, action, resolve) => {
     windowDims
   } = state;
   if (!ctx) return;
-  ctx.save();
-  const {
-    width,
-    height
-  } = getTrueCanvasDims(state);
-  const pxW = width / canvasDims.width;
-  const pxH = height / canvasDims.height;
-  ctx.imageSmoothingEnabled = false;
-  ctx.scale(pxW, pxH);
-  ctx.translate(0.5, 0.5);
+  doContextScaling(state, ctx);
   switch (action.type) {
     case 'STROKE':
       {
@@ -1016,28 +1185,37 @@ const renderAction = (state, action, resolve) => {
       }
     case 'DRAW_SQUARE':
       {
-        const {
-          square,
-          squareType,
-          thickness,
-          color
-        } = action;
-        ctx.lineWidth = thickness || ctx.lineWidth;
-        ctx.fillStyle = color;
-        ctx.strokeStyle = color;
-        if (squareType == 'Filled') {
-          ctx.fillRect(square.x, square.y, square.width, square.height);
-        } else if (squareType == 'Empty') {
-          ctx.beginPath();
-          ctx.rect(square.x, square.y, square.width, square.height);
-          ctx.closePath();
-          ctx.stroke();
-        }
+        drawSquare(ctx, action);
         ctx.restore(); // NOTE: this has to be here for promise to work
         if (resolve) resolve();
         break;
       }
+    case 'COMMIT_SELECTION':
+      {
+        ctx.putImageData(action.imageData, action.x, action.y);
+        ctx.restore();
+        if (resolve) resolve();
+        break;
+      }
   }
+};
+
+// must be paired with a ctx.restore() afterwards!
+const doContextScaling = (state, ctx) => {
+  const {
+    canvasDims,
+    windowDims
+  } = state;
+  ctx.save();
+  const {
+    width,
+    height
+  } = getTrueCanvasDims(state);
+  const pxW = width / canvasDims.width;
+  const pxH = height / canvasDims.height;
+  ctx.imageSmoothingEnabled = false;
+  ctx.scale(pxW, pxH);
+  ctx.translate(0.5, 0.5);
 };
 const posToStr = pos => {
   return `${pos.x}_${pos.y}`;
@@ -1053,10 +1231,35 @@ const setPixelColor = (imageData, canvasDims, pos, color) => {
     imageData.data[index + 3] = 255;
   }
 };
+const drawSquare = (ctx, action) => {
+  const {
+    square,
+    squareType,
+    thickness,
+    color,
+    isDashed
+  } = action;
+  ctx.lineWidth = thickness || ctx.lineWidth;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = color;
+  if (isDashed) {
+    ctx.setLineDash([5, 5]);
+  }
+  if (squareType == 'Filled') {
+    ctx.fillRect(square.x, square.y, square.width, square.height);
+  } else if (squareType == 'Empty') {
+    ctx.beginPath();
+    ctx.rect(square.x, square.y, square.width, square.height);
+    ctx.closePath();
+    ctx.stroke();
+  }
+};
 module.exports = {
   render,
   renderAction,
-  setPixelColor
+  setPixelColor,
+  drawSquare,
+  doContextScaling
 };
 },{"./config":6,"./selectors/canvas":12,"./selectors/colors":13,"./selectors/pixels":14}],12:[function(require,module,exports){
 const {
@@ -1219,7 +1422,10 @@ const initState = () => {
     square: null,
     // square that's being currently drawn
     squareType: 'Filled',
+    selection: null,
+    // a square + imageData
     fuzzFactor: 0,
+    // for bucket fill
     secondaryColor: 'white',
     mouse: undefined // will get defined by mouseReducer
   };
@@ -1683,11 +1889,13 @@ const {
 const DragArea = props => {
   var _state$mouse;
   const id = props.id ? props.id : "dragArea";
+  let children = props.children.length ? props.children : [props.children];
+  // let children = props.children;
 
   // check for new draggables or removed draggables
   useEffect(() => {
     dispatch({
-      draggables: props.children.map(c => {
+      draggables: children.map(c => {
         const elem = document.getElementById(c.props.id);
         if (!elem) return null;
         return {
@@ -1702,11 +1910,11 @@ const DragArea = props => {
         };
       }).filter(e => e != null).reverse()
     });
-    props.children.forEach(c => {
+    children.forEach(c => {
       const elem = document.getElementById(c.props.id);
       elem.style["pointer-events"] = "none";
     });
-  }, [props.children]);
+  }, [children]);
 
   // handle state of everything
   const [state, dispatch, getState] = useEnhancedReducer((state, action) => {
@@ -1828,6 +2036,7 @@ const DragArea = props => {
           y
         };
       }
+      dropPosition = subtract(dropPosition, state.selectedOffset);
       if (props.isDropAllowed && !props.isDropAllowed(state.selectedID, dropPosition)) {
         dispatch({
           type: 'SET_DRAGGABLE',
@@ -1871,7 +2080,7 @@ const DragArea = props => {
       position: 'relative',
       ...(props.style ? props.style : {})
     }
-  }, props.children);
+  }, children);
 };
 const clickedInElem = (pixel, style) => {
   return pixel.x >= style.left && pixel.x <= style.left + style.width && pixel.y >= style.top && pixel.y <= style.top + style.height;

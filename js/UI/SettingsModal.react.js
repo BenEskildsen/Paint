@@ -11,6 +11,19 @@ const SettingsModal = (props) => {
   const [width, setWidth] = useState(state.canvasDims.width);
   const [height, setHeight] = useState(state.canvasDims.height);
 
+  // download
+  function downloadClick() {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return;
+    const dt = canvas.toDataURL('image/png');
+    this.href = dt;
+  }
+  useEffect(() => {
+    const download = document.getElementById('download');
+    if (!download) return;
+    download.addEventListener('click', downloadClick, false);
+  }, []);
+
   return (
     <Modal
       style={{
@@ -46,6 +59,14 @@ const SettingsModal = (props) => {
               dispatch({type: 'DISMISS_MODAL'});
             }}
           />
+          <div>
+            <a
+              id="download"
+              download="canvas.png"
+            >
+              Download as png
+            </a>
+          </div>
 
         </div>
       )}
