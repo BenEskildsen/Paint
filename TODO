@@ -1,7 +1,3 @@
-  - undo/redo
-    - rename actions to transactions
-    - if you undo inside a transaction, undo that, not previously ended one
-    - save bucket fill in txn history which pixels were painted so it can redo faster
 
   - previews
     - off by like 5 pixels in top and left
@@ -12,16 +8,11 @@
     - occasionally draws double
 
   - select
-    - implicitly cut on initial selection (needs to be undoable)
-    - switching tools commits selections back to regular canvas
     - drag handles to resize dragables
     - pasted images should be selected automatically
 
   - implement tools:
     - text
-  - implement per-tool settings
-    - square filled vs not (+ secondary color fill + border)
-    - cut/copy
   - more colors
     - implement secondary color on right click
 

@@ -26,7 +26,13 @@ const ToolBar = (props) => {
       key={"toolButton_" + tool}
       disabled={state.tool == tool}
       label={tool}
-      onClick={() => dispatch({tool})}
+      onClick={() => {
+        if (tool != 'SELECTION' && state.selection != null) {
+          dispatch({type: 'COMMIT_SELECTION', ...state.selection});
+          dispatch({type: 'END_TRANSACTION'});
+        }
+        dispatch({tool});
+      }}
     />);
   }
 
@@ -201,7 +207,23 @@ const ToolParameters = (props) => {
             label="Commit Selection"
             onClick={() => {
               dispatch({type: 'COMMIT_SELECTION', ...state.selection});
-              dispatch({type: 'END_ACTION'});
+              dispatch({type: 'END_TRANSACTION'});
+            }}
+          />
+          <Button
+            label="Copy Selection"
+            onClick={() => {
+              if (!state.selection) return;
+              doCopy(state.selection);
+            }}
+          />
+          <Button
+            label="Cut Selection"
+            onClick={() => {
+              if (!state.selection) return;
+              doCopy(state.selection);
+              dispatch({selection: null});
+              dispatch({type: 'END_TRANSACTION'});
             }}
           />
         </div>
@@ -223,6 +245,20 @@ const ToolParameters = (props) => {
     </div>
   );
 };
+
+const doCopy = (selection) => {
+  const {imageData, width, height} = selection;
+  const canvasClipboard = document.createElement('canvas');
+  canvasClipboard.width = width;
+  canvasClipboard.height = height;
+  canvasClipboard.getContext('2d').putImageData(imageData, 0, 0);
+
+  canvasClipboard.toBlob(function(blob) {
+    const item = new ClipboardItem({ [blob.type]: blob });
+    navigator.clipboard.write([item]);
+    console.log('Copied to clipboard');
+  });
+}
 
 
 module.exports = ToolBar;

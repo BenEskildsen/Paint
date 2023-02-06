@@ -4,9 +4,10 @@ const initState = () => {
   return {
     modal: null,
 
-    actions: [],
-    curAction: [], // NOTE: action here is an array of redux actions
-    redoActions: [],
+    // undo/redo
+    transactions: [], // array of redux actions that get undone/redone together
+    curTransaction: [],
+    redoTransactions: [], // txns that have been undone but can be redone
 
     // canvas state
     canvasDims: {width: config.initialWidth, height: config.initialHeight},
@@ -21,7 +22,7 @@ const initState = () => {
     squareType: 'Filled',
     selection: null, // a square + imageData
     fuzzFactor: 0, // for bucket fill
-    secondaryColor: 'white',
+    secondaryColor: 'white', // TODO not implemented
 
     mouse: undefined, // will get defined by mouseReducer
   };

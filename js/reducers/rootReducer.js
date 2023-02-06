@@ -11,40 +11,46 @@ const rootReducer = (state, action) => {
   if (state === undefined) return initState();
 
   switch (action.type) {
-    case 'END_ACTION':
-      state.redoActions = [];
+    case 'END_TRANSACTION':
+      state.redoTransactions = [];
       // fall-through
-    case 'START_ACTION':
-      if (state.curAction.length > 0) {
-        state.actions.push(state.curAction);
+    case 'START_TRANSACTION':
+      if (state.curTransaction.length > 0) {
+        state.transactions.push(state.curTransaction);
       }
-      state.curAction = [];
+      state.curTransaction = [];
       return {...state};
     case 'STROKE':
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
     case 'COMMIT_SELECTION':
+    case 'CUT':
     case 'PASTE':
-      state.curAction.push(action);
+      state.curTransaction.push(action);
       return toolReducer(state, action);
     case 'UNDO': {
-      if (state.actions.length == 0) return state;
-      const undoneAction = state.actions.pop();
+      if (state.transactions.length == 0) return state;
+      let undoneAction = state.curTransaction; // if inside a txn, undo that
+      if (undoneAction.length == 0) {
+        undoneAction = state.transactions.pop();
+      }
       const nextState = {
         ...state,
-        redoActions: [undoneAction, ...state.redoActions],
-        actions: [...state.actions],
+        selection: null,
+        curTransaction: [],
+        redoTransactions: [undoneAction, ...state.redoTransactions],
+        transactions: [...state.transactions],
       };
       render(nextState);
       return nextState;
     }
     case 'REDO': {
-      if (state.redoActions.length == 0) return state;
-      const redoAction = state.redoActions.shift();
-      state.actions = [...state.actions, redoAction];
+      if (state.redoTransactions.length == 0) return state;
+      const redoTransaction = state.redoTransactions.shift();
+      state.transactions = [...state.transactions, redoTransaction];
       let nextState = {...state};
-      for (const a of state.actions) {
+      for (const a of state.transactions) {
         nextState = toolReducer(nextState, a);
       }
       render(nextState);

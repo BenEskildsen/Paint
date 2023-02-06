@@ -50,7 +50,7 @@ const PaintArea = (props) => {
             }
             break;
           default:
-            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'START_TRANSACTION'});
             break;
         }
       },
@@ -100,25 +100,26 @@ const PaintArea = (props) => {
       leftUp: (state, dispatch, pos) => {
         switch (state.tool) {
           case 'BUCKET':
-            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'START_TRANSACTION'});
             dispatch({type: 'FILL',
               position: {x: Math.round(pos.x), y: Math.round(pos.y)},
               color: state.color,
               fuzzFactor: state.fuzzFactor,
             });
-            dispatch({type: 'END_ACTION'});
+            dispatch({type: 'END_TRANSACTION'});
             break;
           case 'SQUARE':
-            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'START_TRANSACTION'});
             dispatch({type: 'DRAW_SQUARE',
               thickness: state.thickness, squareType: state.squareType, color: state.color,
               square: {...state.square},
             });
             dispatch({square: null});
-            dispatch({type: 'END_ACTION'});
+            dispatch({type: 'END_TRANSACTION'});
             break;
           case 'SELECT':
-            dispatch({type: 'START_ACTION'});
+            dispatch({type: 'START_TRANSACTION'});
+            dispatch({type: 'CUT', ...state.square});
             dispatch({selection: {
               ...state.square,
               imageData: state.ctx.getImageData(
@@ -128,7 +129,7 @@ const PaintArea = (props) => {
             dispatch({square: null});
             break;
           default: {
-            dispatch({type: 'END_ACTION'});
+            dispatch({type: 'END_TRANSACTION'});
             dispatch({prevInteractPos: null});
             break;
           }
@@ -153,9 +154,9 @@ const PaintArea = (props) => {
         }
       }
       if (source) {
-        dispatch({type: 'START_ACTION'});
+        dispatch({type: 'START_TRANSACTION'});
         dispatch({type: 'PASTE', source});
-        dispatch({type: 'END_ACTION'});
+        dispatch({type: 'END_TRANSACTION'});
       }
       ev.preventDefault();
     }, false);

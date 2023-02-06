@@ -15,8 +15,8 @@ async function render(state) {
   ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
   ctx.restore();
 
-  for (const actionList of state.actions) {
-    for (const action of actionList) {
+  for (const transaction of state.transactions) {
+    for (const action of transaction) {
       await renderActionPromise(state, action);
     }
   }
@@ -78,28 +78,31 @@ const renderAction = (state, action, resolve) => {
       break;
     }
     case 'FILL': {
-      const {position, fuzzFactor} = action;
-      const color = stringToColor(action.color);
-      const colorToFill = getColorAtPixel(ctx, position);
-      const imageData = ctx.getImageData(0, 0, canvasDims.width, canvasDims.height);
-      const alreadyVisited = {};
-      const pixels = [position];
-      while (pixels.length > 0) {
-        const pixel = pixels.pop();
-        alreadyVisited[posToStr(pixel)] = true;
-        setPixelColor(imageData, canvasDims, pixel, color);
-        const neighbors = getNeighbors(pixel, canvasDims).filter(pos => {
-          if (alreadyVisited[posToStr(pos)]) return false;
-          const colorAtPixel = getColorAtPixel(ctx, pos);
-          for (let c of ['r','g','b']) {
-            if (Math.abs(colorAtPixel[c] - colorToFill[c]) > fuzzFactor) {
-              return false;
+      let {position, fuzzFactor, imageData} = action;
+      if (!imageData) {
+        const color = stringToColor(action.color);
+        const colorToFill = getColorAtPixel(ctx, position);
+        imageData = ctx.getImageData(0, 0, canvasDims.width, canvasDims.height);
+        const alreadyVisited = {};
+        const pixels = [position];
+        while (pixels.length > 0) {
+          const pixel = pixels.pop();
+          alreadyVisited[posToStr(pixel)] = true;
+          setPixelColor(imageData, canvasDims, pixel, color);
+          const neighbors = getNeighbors(pixel, canvasDims).filter(pos => {
+            if (alreadyVisited[posToStr(pos)]) return false;
+            const colorAtPixel = getColorAtPixel(ctx, pos);
+            for (let c of ['r','g','b']) {
+              if (Math.abs(colorAtPixel[c] - colorToFill[c]) > fuzzFactor) {
+                return false;
+              }
             }
-          }
-          return Math.abs(colorAtPixel.a * 255 - colorToFill.a * 255) <= fuzzFactor * 2;
-        });
-        // console.log(neighbors);
-        pixels.push(...neighbors);
+            return Math.abs(colorAtPixel.a * 255 - colorToFill.a * 255) <= fuzzFactor * 2;
+          });
+          // console.log(neighbors);
+          pixels.push(...neighbors);
+        }
+        action.imageData = imageData;
       }
       ctx.putImageData(imageData, 0, 0);
       ctx.restore(); // NOTE: this has to be here for promise to work
@@ -114,6 +117,12 @@ const renderAction = (state, action, resolve) => {
     }
     case 'COMMIT_SELECTION': {
       ctx.putImageData(action.imageData, action.x, action.y);
+      ctx.restore();
+      if (resolve) resolve();
+      break;
+    }
+    case 'CUT': {
+      ctx.putImageData(ctx.createImageData(action.width, action.height), action.x, action.y);
       ctx.restore();
       if (resolve) resolve();
       break;

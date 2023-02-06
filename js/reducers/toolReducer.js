@@ -10,6 +10,7 @@ const toolReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
+    case 'CUT':
     case 'PASTE':
       renderAction(state, action);
       return {...state};

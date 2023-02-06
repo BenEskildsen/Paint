@@ -54,7 +54,7 @@ const SettingsModal = (props) => {
           <Button
             label="Clear Canvas"
             onClick={() => {
-              dispatch({actions: [], curAction: [], redoActions: []});
+              dispatch({transactions: [], curTransaction: [], redoTransactions: []});
               dispatch({type: 'SET_CANVAS_DIMS', width, height});
               dispatch({type: 'DISMISS_MODAL'});
             }}

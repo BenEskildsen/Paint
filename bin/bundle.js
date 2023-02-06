@@ -284,7 +284,7 @@ const PaintArea = props => {
           break;
         default:
           dispatch({
-            type: 'START_ACTION'
+            type: 'START_TRANSACTION'
           });
           break;
       }
@@ -358,7 +358,7 @@ const PaintArea = props => {
       switch (state.tool) {
         case 'BUCKET':
           dispatch({
-            type: 'START_ACTION'
+            type: 'START_TRANSACTION'
           });
           dispatch({
             type: 'FILL',
@@ -370,12 +370,12 @@ const PaintArea = props => {
             fuzzFactor: state.fuzzFactor
           });
           dispatch({
-            type: 'END_ACTION'
+            type: 'END_TRANSACTION'
           });
           break;
         case 'SQUARE':
           dispatch({
-            type: 'START_ACTION'
+            type: 'START_TRANSACTION'
           });
           dispatch({
             type: 'DRAW_SQUARE',
@@ -390,12 +390,16 @@ const PaintArea = props => {
             square: null
           });
           dispatch({
-            type: 'END_ACTION'
+            type: 'END_TRANSACTION'
           });
           break;
         case 'SELECT':
           dispatch({
-            type: 'START_ACTION'
+            type: 'START_TRANSACTION'
+          });
+          dispatch({
+            type: 'CUT',
+            ...state.square
           });
           dispatch({
             selection: {
@@ -410,7 +414,7 @@ const PaintArea = props => {
         default:
           {
             dispatch({
-              type: 'END_ACTION'
+              type: 'END_TRANSACTION'
             });
             dispatch({
               prevInteractPos: null
@@ -437,14 +441,14 @@ const PaintArea = props => {
       }
       if (source) {
         dispatch({
-          type: 'START_ACTION'
+          type: 'START_TRANSACTION'
         });
         dispatch({
           type: 'PASTE',
           source
         });
         dispatch({
-          type: 'END_ACTION'
+          type: 'END_TRANSACTION'
         });
       }
       ev.preventDefault();
@@ -620,9 +624,9 @@ const SettingsModal = props => {
       label: "Clear Canvas",
       onClick: () => {
         dispatch({
-          actions: [],
-          curAction: [],
-          redoActions: []
+          transactions: [],
+          curTransaction: [],
+          redoTransactions: []
         });
         dispatch({
           type: 'SET_CANVAS_DIMS',
@@ -699,9 +703,20 @@ const ToolBar = props => {
       key: "toolButton_" + tool,
       disabled: state.tool == tool,
       label: tool,
-      onClick: () => dispatch({
-        tool
-      })
+      onClick: () => {
+        if (tool != 'SELECTION' && state.selection != null) {
+          dispatch({
+            type: 'COMMIT_SELECTION',
+            ...state.selection
+          });
+          dispatch({
+            type: 'END_TRANSACTION'
+          });
+        }
+        dispatch({
+          tool
+        });
+      }
     }));
   }
   return /*#__PURE__*/React.createElement("div", {
@@ -863,7 +878,25 @@ const ToolParameters = props => {
               ...state.selection
             });
             dispatch({
-              type: 'END_ACTION'
+              type: 'END_TRANSACTION'
+            });
+          }
+        }), /*#__PURE__*/React.createElement(Button, {
+          label: "Copy Selection",
+          onClick: () => {
+            if (!state.selection) return;
+            doCopy(state.selection);
+          }
+        }), /*#__PURE__*/React.createElement(Button, {
+          label: "Cut Selection",
+          onClick: () => {
+            if (!state.selection) return;
+            doCopy(state.selection);
+            dispatch({
+              selection: null
+            });
+            dispatch({
+              type: 'END_TRANSACTION'
             });
           }
         }));
@@ -878,6 +911,24 @@ const ToolParameters = props => {
       paddingTop: 4
     }
   }, content);
+};
+const doCopy = selection => {
+  const {
+    imageData,
+    width,
+    height
+  } = selection;
+  const canvasClipboard = document.createElement('canvas');
+  canvasClipboard.width = width;
+  canvasClipboard.height = height;
+  canvasClipboard.getContext('2d').putImageData(imageData, 0, 0);
+  canvasClipboard.toBlob(function (blob) {
+    const item = new ClipboardItem({
+      [blob.type]: blob
+    });
+    navigator.clipboard.write([item]);
+    console.log('Copied to clipboard');
+  });
 };
 module.exports = ToolBar;
 },{"../config":6,"../selectors/colors":13,"./SettingsModal.react":4,"bens_ui_components":38,"react":53}],6:[function(require,module,exports){
@@ -957,14 +1008,14 @@ const {
 const rootReducer = (state, action) => {
   if (state === undefined) return initState();
   switch (action.type) {
-    case 'END_ACTION':
-      state.redoActions = [];
+    case 'END_TRANSACTION':
+      state.redoTransactions = [];
     // fall-through
-    case 'START_ACTION':
-      if (state.curAction.length > 0) {
-        state.actions.push(state.curAction);
+    case 'START_TRANSACTION':
+      if (state.curTransaction.length > 0) {
+        state.transactions.push(state.curTransaction);
       }
-      state.curAction = [];
+      state.curTransaction = [];
       return {
         ...state
       };
@@ -973,30 +1024,36 @@ const rootReducer = (state, action) => {
     case 'ERASE':
     case 'DRAW_SQUARE':
     case 'COMMIT_SELECTION':
+    case 'CUT':
     case 'PASTE':
-      state.curAction.push(action);
+      state.curTransaction.push(action);
       return toolReducer(state, action);
     case 'UNDO':
       {
-        if (state.actions.length == 0) return state;
-        const undoneAction = state.actions.pop();
+        if (state.transactions.length == 0) return state;
+        let undoneAction = state.curTransaction; // if inside a txn, undo that
+        if (undoneAction.length == 0) {
+          undoneAction = state.transactions.pop();
+        }
         const nextState = {
           ...state,
-          redoActions: [undoneAction, ...state.redoActions],
-          actions: [...state.actions]
+          selection: null,
+          curTransaction: [],
+          redoTransactions: [undoneAction, ...state.redoTransactions],
+          transactions: [...state.transactions]
         };
         render(nextState);
         return nextState;
       }
     case 'REDO':
       {
-        if (state.redoActions.length == 0) return state;
-        const redoAction = state.redoActions.shift();
-        state.actions = [...state.actions, redoAction];
+        if (state.redoTransactions.length == 0) return state;
+        const redoTransaction = state.redoTransactions.shift();
+        state.transactions = [...state.transactions, redoTransaction];
         let nextState = {
           ...state
         };
-        for (const a of state.actions) {
+        for (const a of state.transactions) {
           nextState = toolReducer(nextState, a);
         }
         render(nextState);
@@ -1045,6 +1102,7 @@ const toolReducer = (state, action) => {
     case 'FILL':
     case 'ERASE':
     case 'DRAW_SQUARE':
+    case 'CUT':
     case 'PASTE':
       renderAction(state, action);
       return {
@@ -1086,8 +1144,8 @@ async function render(state) {
   doContextScaling(state, ctx);
   ctx.putImageData(ctx.createImageData(canvasDims.width, canvasDims.height), 0, 0);
   ctx.restore();
-  for (const actionList of state.actions) {
-    for (const action of actionList) {
+  for (const transaction of state.transactions) {
+    for (const action of transaction) {
       await renderActionPromise(state, action);
     }
   }
@@ -1152,31 +1210,35 @@ const renderAction = (state, action, resolve) => {
       }
     case 'FILL':
       {
-        const {
+        let {
           position,
-          fuzzFactor
+          fuzzFactor,
+          imageData
         } = action;
-        const color = stringToColor(action.color);
-        const colorToFill = getColorAtPixel(ctx, position);
-        const imageData = ctx.getImageData(0, 0, canvasDims.width, canvasDims.height);
-        const alreadyVisited = {};
-        const pixels = [position];
-        while (pixels.length > 0) {
-          const pixel = pixels.pop();
-          alreadyVisited[posToStr(pixel)] = true;
-          setPixelColor(imageData, canvasDims, pixel, color);
-          const neighbors = getNeighbors(pixel, canvasDims).filter(pos => {
-            if (alreadyVisited[posToStr(pos)]) return false;
-            const colorAtPixel = getColorAtPixel(ctx, pos);
-            for (let c of ['r', 'g', 'b']) {
-              if (Math.abs(colorAtPixel[c] - colorToFill[c]) > fuzzFactor) {
-                return false;
+        if (!imageData) {
+          const color = stringToColor(action.color);
+          const colorToFill = getColorAtPixel(ctx, position);
+          imageData = ctx.getImageData(0, 0, canvasDims.width, canvasDims.height);
+          const alreadyVisited = {};
+          const pixels = [position];
+          while (pixels.length > 0) {
+            const pixel = pixels.pop();
+            alreadyVisited[posToStr(pixel)] = true;
+            setPixelColor(imageData, canvasDims, pixel, color);
+            const neighbors = getNeighbors(pixel, canvasDims).filter(pos => {
+              if (alreadyVisited[posToStr(pos)]) return false;
+              const colorAtPixel = getColorAtPixel(ctx, pos);
+              for (let c of ['r', 'g', 'b']) {
+                if (Math.abs(colorAtPixel[c] - colorToFill[c]) > fuzzFactor) {
+                  return false;
+                }
               }
-            }
-            return Math.abs(colorAtPixel.a * 255 - colorToFill.a * 255) <= fuzzFactor * 2;
-          });
-          // console.log(neighbors);
-          pixels.push(...neighbors);
+              return Math.abs(colorAtPixel.a * 255 - colorToFill.a * 255) <= fuzzFactor * 2;
+            });
+            // console.log(neighbors);
+            pixels.push(...neighbors);
+          }
+          action.imageData = imageData;
         }
         ctx.putImageData(imageData, 0, 0);
         ctx.restore(); // NOTE: this has to be here for promise to work
@@ -1193,6 +1255,13 @@ const renderAction = (state, action, resolve) => {
     case 'COMMIT_SELECTION':
       {
         ctx.putImageData(action.imageData, action.x, action.y);
+        ctx.restore();
+        if (resolve) resolve();
+        break;
+      }
+    case 'CUT':
+      {
+        ctx.putImageData(ctx.createImageData(action.width, action.height), action.x, action.y);
         ctx.restore();
         if (resolve) resolve();
         break;
@@ -1399,10 +1468,13 @@ const {
 const initState = () => {
   return {
     modal: null,
-    actions: [],
-    curAction: [],
-    // NOTE: action here is an array of redux actions
-    redoActions: [],
+    // undo/redo
+    transactions: [],
+    // array of redux actions that get undone/redone together
+    curTransaction: [],
+    redoTransactions: [],
+    // txns that have been undone but can be redone
+
     // canvas state
     canvasDims: {
       width: config.initialWidth,
@@ -1427,6 +1499,8 @@ const initState = () => {
     fuzzFactor: 0,
     // for bucket fill
     secondaryColor: 'white',
+    // TODO not implemented
+
     mouse: undefined // will get defined by mouseReducer
   };
 };
