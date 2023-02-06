@@ -397,19 +397,31 @@ const PaintArea = props => {
           dispatch({
             type: 'START_TRANSACTION'
           });
+          const square = {
+            ...state.square
+          };
+          if (square.width < 0) {
+            square.x += square.width;
+            square.width *= -1;
+          }
+          if (square.height < 0) {
+            square.y += square.height;
+            square.height *= -1;
+          }
           dispatch({
             type: 'CUT',
-            ...state.square
+            ...square
+          });
+          dispatch({
+            square
           });
           dispatch({
             selection: {
-              ...state.square,
-              imageData: state.ctx.getImageData(state.square.x, state.square.y, state.square.width, state.square.height)
+              ...square,
+              imageData: state.ctx.getImageData(square.x, square.y, square.width, square.height)
             }
           });
-          dispatch({
-            square: null
-          });
+          // dispatch({square: null});
           break;
         default:
           {
@@ -503,15 +515,24 @@ const PaintArea = props => {
         position: 'absolute'
       },
       onDrop: (id, position) => {
-        dispatch({
-          selection: {
-            ...state.selection,
-            ...position
-          }
-        });
+        if (id == 'selection') {
+          dispatch({
+            selection: {
+              ...getState().selection,
+              ...position
+            }
+          });
+        } else if (id == 'dragHandle1') {
+          dispatch({
+            selection: {
+              ...getState().selection,
+              width: position.x - getState().selection.x,
+              height: position.y - getState().selection.y
+            }
+          });
+        }
       }
-    }, [/*#__PURE__*/React.createElement("div", {
-      // HACK: needs to be part of an array for props.children.map in DragArea
+    }, /*#__PURE__*/React.createElement("div", {
       id: "selection",
       key: "selection",
       style: {
@@ -526,14 +547,37 @@ const PaintArea = props => {
       id: "selectionCanvas",
       width: state.selection.width,
       height: state.selection.height
-    }))]);
+    })), /*#__PURE__*/React.createElement("div", {
+      id: "dragHandle1",
+      key: "dragHandle1",
+      style: {
+        position: 'absolute',
+        top: state.selection.y + state.selection.height,
+        left: state.selection.x + state.selection.width,
+        width: 8,
+        height: 8,
+        backgroundColor: 'black'
+      }
+    }));
   }
   useEffect(() => {
     if (state.selection == null) return;
     const canvas = document.getElementById("selectionCanvas");
     if (canvas == null) return;
     const ctx = canvas.getContext("2d");
+    const {
+      width,
+      height
+    } = state.selection;
     ctx.putImageData(state.selection.imageData, 0, 0);
+    if (width == state.square.width && height == state.square.height) return;
+    const dataURL = canvas.toDataURL();
+    ctx.clearRect(0, 0, width, height);
+    const image = new Image();
+    image.onload = () => {
+      ctx.drawImage(image, 0, 0, state.square.width, state.square.height, 0, 0, width, height);
+    };
+    image.src = dataURL;
   }, [state.selection]);
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -705,9 +749,13 @@ const ToolBar = props => {
       label: tool,
       onClick: () => {
         if (tool != 'SELECTION' && state.selection != null) {
+          const canvas = document.getElementById("selectionCanvas");
+          if (canvas == null) return;
+          const ctx = canvas.getContext("2d");
           dispatch({
             type: 'COMMIT_SELECTION',
-            ...state.selection
+            ...state.selection,
+            imageData: ctx.getImageData(0, 0, state.selection.width, state.selection.height)
           });
           dispatch({
             type: 'END_TRANSACTION'
@@ -873,9 +921,13 @@ const ToolParameters = props => {
         }, /*#__PURE__*/React.createElement(Button, {
           label: "Commit Selection",
           onClick: () => {
+            const canvas = document.getElementById("selectionCanvas");
+            if (canvas == null) return;
+            const ctx = canvas.getContext("2d");
             dispatch({
               type: 'COMMIT_SELECTION',
-              ...state.selection
+              ...state.selection,
+              imageData: ctx.getImageData(0, 0, state.selection.width, state.selection.height)
             });
             dispatch({
               type: 'END_TRANSACTION'
@@ -885,7 +937,7 @@ const ToolParameters = props => {
           label: "Copy Selection",
           onClick: () => {
             if (!state.selection) return;
-            doCopy(state.selection);
+            doCopy(getState().selection);
           }
         }), /*#__PURE__*/React.createElement(Button, {
           label: "Cut Selection",
@@ -912,22 +964,13 @@ const ToolParameters = props => {
     }
   }, content);
 };
-const doCopy = selection => {
-  const {
-    imageData,
-    width,
-    height
-  } = selection;
-  const canvasClipboard = document.createElement('canvas');
-  canvasClipboard.width = width;
-  canvasClipboard.height = height;
-  canvasClipboard.getContext('2d').putImageData(imageData, 0, 0);
-  canvasClipboard.toBlob(function (blob) {
+const doCopy = () => {
+  const canvas = document.getElementById("selectionCanvas");
+  canvas.toBlob(function (blob) {
     const item = new ClipboardItem({
       [blob.type]: blob
     });
     navigator.clipboard.write([item]);
-    console.log('Copied to clipboard');
   });
 };
 module.exports = ToolBar;
@@ -1038,6 +1081,7 @@ const rootReducer = (state, action) => {
         const nextState = {
           ...state,
           selection: null,
+          square: null,
           curTransaction: [],
           redoTransactions: [undoneAction, ...state.redoTransactions],
           transactions: [...state.transactions]
@@ -1097,6 +1141,7 @@ const toolReducer = (state, action) => {
   switch (action.type) {
     case 'COMMIT_SELECTION':
       state.selection = null;
+      state.square = null;
     // fall-through
     case 'STROKE':
     case 'FILL':

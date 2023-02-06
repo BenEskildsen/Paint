@@ -119,14 +119,24 @@ const PaintArea = (props) => {
             break;
           case 'SELECT':
             dispatch({type: 'START_TRANSACTION'});
-            dispatch({type: 'CUT', ...state.square});
+            const square = {...state.square};
+            if (square.width < 0) {
+              square.x += square.width;
+              square.width *= -1;
+            }
+            if (square.height < 0) {
+              square.y += square.height;
+              square.height *= -1;
+            }
+            dispatch({type: 'CUT', ...square});
+            dispatch({square});
             dispatch({selection: {
-              ...state.square,
+              ...square,
               imageData: state.ctx.getImageData(
-                state.square.x, state.square.y, state.square.width, state.square.height,
+                square.x, square.y, square.width, square.height,
               ),
             }});
-            dispatch({square: null});
+            // dispatch({square: null});
             break;
           default: {
             dispatch({type: 'END_TRANSACTION'});
@@ -207,10 +217,17 @@ const PaintArea = (props) => {
           position: 'absolute',
         }}
         onDrop={(id, position) => {
-          dispatch({selection: {...state.selection, ...position}});
+          if (id == 'selection') {
+            dispatch({selection: {...getState().selection, ...position}});
+          } else if (id == 'dragHandle1') {
+            dispatch({selection: {...getState().selection,
+              width: position.x - getState().selection.x,
+              height: position.y - getState().selection.y,
+            }});
+          }
         }}
       >
-        {[(<div // HACK: needs to be part of an array for props.children.map in DragArea
+        <div
           id="selection"
           key="selection"
           style={{
@@ -224,7 +241,19 @@ const PaintArea = (props) => {
             id="selectionCanvas"
             width={state.selection.width} height={state.selection.height}
           />
-        </div>)]}
+        </div>
+        <div
+          id="dragHandle1"
+          key="dragHandle1"
+          style={{
+            position: 'absolute',
+            top: state.selection.y + state.selection.height,
+            left: state.selection.x + state.selection.width,
+            width: 8, height: 8,
+            backgroundColor: 'black',
+          }}
+        />
+
       </DragArea>
     );
   }
@@ -233,7 +262,18 @@ const PaintArea = (props) => {
     const canvas = document.getElementById("selectionCanvas");
     if (canvas == null) return;
     const ctx = canvas.getContext("2d");
+    const {width, height} = state.selection;
     ctx.putImageData(state.selection.imageData, 0, 0);
+    if (width == state.square.width && height == state.square.height) return;
+    const dataURL = canvas.toDataURL();
+    ctx.clearRect(0,0, width, height);
+    const image = new Image();
+    image.onload = () => {
+      ctx.drawImage(image, 0, 0, state.square.width, state.square.height,
+        0, 0, width, height
+      );
+    }
+    image.src = dataURL;
   }, [state.selection]);
 
   return (

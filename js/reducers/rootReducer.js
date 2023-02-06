@@ -38,6 +38,7 @@ const rootReducer = (state, action) => {
       const nextState = {
         ...state,
         selection: null,
+        square: null,
         curTransaction: [],
         redoTransactions: [undoneAction, ...state.redoTransactions],
         transactions: [...state.transactions],

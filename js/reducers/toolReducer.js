@@ -5,6 +5,7 @@ const toolReducer = (state, action) => {
   switch (action.type) {
     case 'COMMIT_SELECTION':
       state.selection = null;
+      state.square = null;
       // fall-through
     case 'STROKE':
     case 'FILL':

@@ -28,7 +28,13 @@ const ToolBar = (props) => {
       label={tool}
       onClick={() => {
         if (tool != 'SELECTION' && state.selection != null) {
-          dispatch({type: 'COMMIT_SELECTION', ...state.selection});
+          const canvas = document.getElementById("selectionCanvas");
+          if (canvas == null) return;
+          const ctx = canvas.getContext("2d");
+          dispatch({type: 'COMMIT_SELECTION',
+            ...state.selection,
+            imageData: ctx.getImageData(0, 0, state.selection.width, state.selection.height),
+          });
           dispatch({type: 'END_TRANSACTION'});
         }
         dispatch({tool});
@@ -206,7 +212,13 @@ const ToolParameters = (props) => {
           <Button
             label="Commit Selection"
             onClick={() => {
-              dispatch({type: 'COMMIT_SELECTION', ...state.selection});
+              const canvas = document.getElementById("selectionCanvas");
+              if (canvas == null) return;
+              const ctx = canvas.getContext("2d");
+              dispatch({type: 'COMMIT_SELECTION',
+                ...state.selection,
+                imageData: ctx.getImageData(0, 0, state.selection.width, state.selection.height),
+              });
               dispatch({type: 'END_TRANSACTION'});
             }}
           />
@@ -214,7 +226,7 @@ const ToolParameters = (props) => {
             label="Copy Selection"
             onClick={() => {
               if (!state.selection) return;
-              doCopy(state.selection);
+              doCopy(getState().selection);
             }}
           />
           <Button
@@ -246,17 +258,12 @@ const ToolParameters = (props) => {
   );
 };
 
-const doCopy = (selection) => {
-  const {imageData, width, height} = selection;
-  const canvasClipboard = document.createElement('canvas');
-  canvasClipboard.width = width;
-  canvasClipboard.height = height;
-  canvasClipboard.getContext('2d').putImageData(imageData, 0, 0);
+const doCopy = () => {
+  const canvas = document.getElementById("selectionCanvas");
 
-  canvasClipboard.toBlob(function(blob) {
+  canvas.toBlob(function(blob) {
     const item = new ClipboardItem({ [blob.type]: blob });
     navigator.clipboard.write([item]);
-    console.log('Copied to clipboard');
   });
 }
 

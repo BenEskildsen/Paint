@@ -9,6 +9,7 @@
 
   - select
     - drag handles to resize dragables
+      - resizing small cuts off image
     - pasted images should be selected automatically
 
   - implement tools:
